@@ -1,6 +1,8 @@
 #include <SDL.h>
 #include <cstdio>
 
+#include "libcalc/libcalc.h"
+
 // picocalc-text-starter font
 #include "extern/font.h"
 
@@ -99,6 +101,27 @@ void lcd_show_cursor()
     // TODO
 }
 
+void lcd_scroll_up_one_line()
+{
+    SDL_Rect srcRect { 0, GLYPH_HEIGHT, WIDTH, HEIGHT };
+    SDL_Rect dstRect { 0, 0, WIDTH, HEIGHT };
+    SDL_BlitSurface(gBackBuffer, &srcRect, gBackBuffer, &dstRect);
+
+    SDL_Rect clrRect { 0, HEIGHT-GLYPH_HEIGHT, WIDTH, GLYPH_HEIGHT };
+    SDL_FillRect(gBackBuffer, &clrRect, gBgCol);
+
+    if (gCursorY > 0)
+        --gCursorY;
+}
+
+void lcd_next_line()
+{
+    ++gCursorY;
+
+    while(gCursorY >= ROWS)
+        lcd_scroll_up_one_line();
+}
+
 void display_emit(char c)
 {
     lcd_erase_cursor();
@@ -115,14 +138,14 @@ void display_emit(char c)
         if (gCursorX >= COLS-1)
         {
             gCursorX = 0;
-            ++gCursorY;
+            lcd_next_line();
         }
         break;
 
     case SDLK_RETURN:
     case '\n':
         gCursorX = 0;
-        ++gCursorY;
+        lcd_next_line();
         break;
 
     default:
@@ -183,6 +206,18 @@ bool handleInputChar(char c)
     }
 
     return false;
+}
+
+
+void eval_input()
+{
+    char resBuf[1024];
+    calc_eval(gReadBuf, resBuf, sizeof(resBuf));
+    display_puts(resBuf);
+    display_puts("\n> ");
+
+    gReadBufIx = 0;
+    gReadBuf[0] = 0;
 }
 
 
@@ -247,15 +282,34 @@ int main()
                 wantsQuit = true;
                 break;
 
-            case SDL_KEYDOWN:
-                if (handleInputChar(evt.key.keysym.sym) && (gReadBufIx > 0))
-                {
-                    display_puts("executing: ");
-                    display_puts(gReadBuf);
-                    display_puts("\n> ");
+            case SDL_TEXTINPUT:
+                //printf("textinput: char=%c\n", evt.text.text[0]);
+                handleInputChar(evt.text.text[0]);
+                break;
 
-                    gReadBufIx = 0;
-                    gReadBuf[0] = 0;
+            case SDL_KEYDOWN:
+                {
+                    const int keycode = evt.key.keysym.sym;
+                    const int scancode = evt.key.keysym.scancode;
+                    switch (keycode)
+                    {
+                    case SDLK_BACKSPACE:
+                    case SDLK_DELETE:
+                    case SDLK_RETURN:
+                        if (handleInputChar(keycode) && (gReadBufIx > 0))
+                            eval_input();
+                        break;
+                    }
+                    switch (scancode)
+                    {
+                    case SDL_SCANCODE_KP_ENTER:
+                        if (handleInputChar(SDLK_RETURN) && (gReadBufIx > 0))
+                            eval_input();
+                        break;
+                    }
+                //    printf("keydown: keycode=%d, scancode=%d\n",
+                //       evt.key.keysym.sym, evt.key.keysym.scancode);
+
                 }
                 break;
 

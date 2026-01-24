@@ -4,7 +4,7 @@ TARGET := mcalc
 BUILD_DIR := build
 SRC_DIRS := src
 
-SRCS := $(shell find $(SRC_DIRS) -name '*.cpp' -or -name '*.c')
+SRCS := $(shell find $(SRC_DIRS) -name '*.cpp' -or -name '*.c' -or -name '*.y' -or -name '*.l')
 
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)
@@ -23,6 +23,11 @@ CFLAGS := $(INCLUDE_CFLAGS) -MMD -MP -g -Wall -Wextra -Werror -std=c17
 CPPFLAGS := $(INCLUDE_CFLAGS) -MMD -MP -g -Wall -Wextra -Werror -std=c++17
 LDFLAGS := $(LIB_LDFLAGS)
 
+LEX := flex
+YACC := bison
+YFLAGS := -d
+
+
 $(BUILD_DIR)/$(TARGET): $(OBJS)
 	$(CXX) $(OBJS) -o $@ $(LDFLAGS)
 
@@ -31,6 +36,10 @@ $(BUILD_DIR)/%.c.o: %.c Makefile
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.cpp.o: %.cpp Makefile
+	mkdir -p $(dir $@)
+	$(CXX) $(CPPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%..o: %.cpp Makefile
 	mkdir -p $(dir $@)
 	$(CXX) $(CPPFLAGS) -c $< -o $@
 
