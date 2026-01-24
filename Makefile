@@ -19,8 +19,8 @@ INCLUDE_CFLAGS := $(addprefix -I,$(INCLUDE_DIRS)) $(shell sdl2-config --cflags)
 
 LIB_LDFLAGS := $(addprefix -l,$(EXT_LIBS)) $(shell sdl2-config --libs)
 
-CFLAGS := $(INCLUDE_CFLAGS) -MMD -MP -g -Wall -Werror -std=c17
-CPPFLAGS := $(INCLUDE_CFLAGS) -MMD -MP -g -Wall -Werror -std=c++17
+CFLAGS := $(INCLUDE_CFLAGS) -MMD -MP -g -Wall -Wextra -Werror -std=c17
+CPPFLAGS := $(INCLUDE_CFLAGS) -MMD -MP -g -Wall -Wextra -Werror -std=c++17
 LDFLAGS := $(LIB_LDFLAGS)
 
 $(BUILD_DIR)/$(TARGET): $(OBJS)

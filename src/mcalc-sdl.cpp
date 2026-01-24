@@ -75,8 +75,115 @@ void lcd_putc(uint8_t column, uint8_t row, uint8_t c)
     }
 }
 
+uint8_t gCursorX = 0;
+uint8_t gCursorY = 0;
+
+void lcd_inc_column()
+{
+    ++gCursorX;
+
+    if (gCursorX >= COLS)
+    {
+        gCursorX = 0;
+        ++gCursorY;
+    }
+}
+
+void lcd_erase_cursor()
+{
+    // TODO
+}
+
+void lcd_show_cursor()
+{
+    // TODO
+}
+
+void display_emit(char c)
+{
+    lcd_erase_cursor();
+
+    switch(c)
+    {
+    case SDLK_BACKSPACE:
+        if (gCursorX > 0)
+            --gCursorX;
+        break;
+
+    case SDLK_TAB:
+        gCursorX = (gCursorX + 4) & ~3;
+        if (gCursorX >= COLS-1)
+        {
+            gCursorX = 0;
+            ++gCursorY;
+        }
+        break;
+
+    case SDLK_RETURN:
+    case '\n':
+        gCursorX = 0;
+        ++gCursorY;
+        break;
+
+    default:
+        if (c >= 0x20 && c < 0x7f)
+        {
+            lcd_putc(gCursorX, gCursorY, c);
+            lcd_inc_column();
+        }
+    }
+}
+
+void display_puts(const char* s)
+{
+    if (!s)
+        return;
+
+    while (*s)
+    {
+        display_emit(*s);
+        ++s;
+    }
+}
 
 
+char gReadBuf[256] = {0};
+constexpr int kReadBufSize = sizeof(gReadBuf) / sizeof(gReadBuf[0]);
+int gReadBufIx = 0;
+
+// returns true if the input ended a command that should be processed
+bool handleInputChar(char c)
+{
+    if (c == '\r' || c == '\n')
+    {
+        display_emit(SDLK_RETURN);
+
+        // null-terminate and return executable
+        gReadBuf[gReadBufIx] = 0;
+        return true;
+    }
+
+    if (c == SDLK_BACKSPACE)
+    {
+        if (gReadBufIx > 0)
+        {
+            --gReadBufIx;
+            gReadBuf[gReadBufIx] = 0; // blank out whatever was there
+
+            // erase the last char on screen
+            display_puts("\b \b");
+        }
+    }
+    else if ((gReadBufIx+1 < kReadBufSize) && (c >= 0x20) && (c < 0x7f))
+    {
+        gReadBuf[gReadBufIx] = c;
+        ++gReadBufIx;
+
+        display_emit(c);
+    }
+
+    return false;
+}
 
 
 int main()
@@ -109,7 +216,7 @@ int main()
 
     SDL_FillRect(gBackBuffer, NULL, 0);
 
-    lcd_putc(0, 0, 'T');
+/*    lcd_putc(0, 0, 'T');
     lcd_putc(1, 0, 'o');
     lcd_putc(2, 0, 'p');
     lcd_putc(3, 0, 'L');
@@ -121,6 +228,9 @@ int main()
     lcd_putc(COLS-3, ROWS-1, 't');
     lcd_putc(COLS-2, ROWS-1, 'm');
     lcd_putc(COLS-1, ROWS-1, 'R');
+*/
+
+    display_puts("> ");
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
     SDL_UpdateWindowSurface(gWindow);
@@ -131,9 +241,32 @@ int main()
         SDL_Event evt;
         while (SDL_PollEvent(&evt))
         {
-            if (evt.type == SDL_QUIT)
+            switch (evt.type)
+            {
+            case SDL_QUIT:
                 wantsQuit = true;
+                break;
+
+            case SDL_KEYDOWN:
+                if (handleInputChar(evt.key.keysym.sym) && (gReadBufIx > 0))
+                {
+                    display_puts("executing: ");
+                    display_puts(gReadBuf);
+                    display_puts("\n> ");
+
+                    gReadBufIx = 0;
+                    gReadBuf[0] = 0;
+                }
+                break;
+
+            default:
+                break;
+            }
         }
+
+        SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
+        SDL_UpdateWindowSurface(gWindow);
+
     }
 
     cleanup_lcd();
