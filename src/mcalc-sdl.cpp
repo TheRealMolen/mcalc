@@ -19,8 +19,10 @@ SDL_Surface* gBackBuffer = nullptr;
 #define HEIGHT  320
 #define ROWS    (HEIGHT / GLYPH_HEIGHT)
 
-const font_t* gFont = &font_5x10;
-constexpr uint8_t kFontWidth = 5;
+//const font_t* gFont = &font_5x10;
+//constexpr uint8_t kFontWidth = 5;
+const font_t* gFont = &font_10x16;
+constexpr uint8_t kFontWidth = 10;
 #define COLS    (WIDTH / kFontWidth)
 
 uint16_t gFgCol = 0xff07;
@@ -54,17 +56,40 @@ void lcd_putc(uint8_t column, uint8_t row, uint8_t c)
     if (SDL_MUSTLOCK(gCharSurface))
         SDL_LockSurface(gCharSurface);
 
-    const uint8_t* glyph = &gFont->glyphs[c * GLYPH_HEIGHT];
+    constexpr int kBytesPerGlyphRow = (kFontWidth + 7) / 8;
+    const uint8_t* glyph = &gFont->glyphs[c * GLYPH_HEIGHT * kBytesPerGlyphRow];
     uint16_t* outPix = (uint16_t*)gCharSurface->pixels;
     const int pitch = gCharSurface->pitch / sizeof(*outPix);
     for (int i = 0; i < GLYPH_HEIGHT; ++i, ++glyph, outPix+=pitch)
     {
-        const uint8_t g = *glyph;
-        outPix[0] = (g & 0x10) ? gFgCol : gBgCol;
-        outPix[1] = (g & 0x08) ? gFgCol : gBgCol;
-        outPix[2] = (g & 0x04) ? gFgCol : gBgCol;
-        outPix[3] = (g & 0x02) ? gFgCol : gBgCol;
-        outPix[4] = (g & 0x01) ? gFgCol : gBgCol;
+        uint16_t g = *glyph;
+        if constexpr (kFontWidth > 8)
+        {
+            ++glyph;
+            g = (g << 8) | *glyph;
+        }
+
+        if constexpr (kFontWidth == 5)
+        {
+            outPix[0] = (g & 0x10) ? gFgCol : gBgCol;
+            outPix[1] = (g & 0x08) ? gFgCol : gBgCol;
+            outPix[2] = (g & 0x04) ? gFgCol : gBgCol;
+            outPix[3] = (g & 0x02) ? gFgCol : gBgCol;
+            outPix[4] = (g & 0x01) ? gFgCol : gBgCol;
+        }
+        else if constexpr (kFontWidth == 10)
+        {
+            outPix[0] = (g & 0x200) ? gFgCol : gBgCol;
+            outPix[1] = (g & 0x100) ? gFgCol : gBgCol;
+            outPix[2] = (g & 0x080) ? gFgCol : gBgCol;
+            outPix[3] = (g & 0x040) ? gFgCol : gBgCol;
+            outPix[4] = (g & 0x020) ? gFgCol : gBgCol;
+            outPix[5] = (g & 0x010) ? gFgCol : gBgCol;
+            outPix[6] = (g & 0x008) ? gFgCol : gBgCol;
+            outPix[7] = (g & 0x004) ? gFgCol : gBgCol;
+            outPix[8] = (g & 0x002) ? gFgCol : gBgCol;
+            outPix[9] = (g & 0x001) ? gFgCol : gBgCol;
+        }
     }
 
     if (SDL_MUSTLOCK(gCharSurface))
@@ -214,7 +239,7 @@ void eval_input()
     char resBuf[1024];
     calc_eval(gReadBuf, resBuf, sizeof(resBuf));
     display_puts(resBuf);
-    display_puts("\n> ");
+    display_puts("\n>");
 
     gReadBufIx = 0;
     gReadBuf[0] = 0;
@@ -265,7 +290,8 @@ int main()
     lcd_putc(COLS-1, ROWS-1, 'R');
 */
 
-    display_puts("> ");
+    display_puts("molencalc v1\n\n");
+    display_puts(">");
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
     SDL_UpdateWindowSurface(gWindow);
