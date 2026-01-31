@@ -204,6 +204,9 @@ bool handleInputChar(char c)
 {
     if (c == '\r' || c == '\n')
     {
+        if (gReadBufIx == 0)
+            return false;
+
         display_emit(SDLK_RETURN);
 
         // null-terminate and return executable
@@ -290,7 +293,7 @@ int main()
     lcd_putc(COLS-1, ROWS-1, 'R');
 */
 
-    display_puts("molencalc v1\n\n");
+    display_puts("molencalc v11     don't panic\n\n");
     display_puts(">");
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);

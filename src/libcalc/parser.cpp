@@ -2,7 +2,24 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <cstdio>
+#include <cstring>
 
+//-------------------------------------------------------------------------------------------------
+
+const char* kTokenNames[] =
+{
+    "INV", "EOF",
+    "NUM",
+    "SYM",
+    "+", "-",
+    "*", "/",
+    "^",
+    "(",")",
+    "!",
+    ":", "->",
+};
+static_assert((sizeof(kTokenNames) / sizeof(kTokenNames[0])) == size_t(Token::COUNT));
 
 //-------------------------------------------------------------------------------------------------
 
@@ -160,12 +177,25 @@ void advance_token(ParseCtx& ctx)
         return; // nb. return early so we don't increment currIx again
 
     case '+': ctx.NextToken = Token::Plus;      break;
-    case '-': ctx.NextToken = Token::Minus;     break;
     case '*': ctx.NextToken = Token::Times;     break;
     case '^': ctx.NextToken = Token::Exponent;  break;
     case '/': ctx.NextToken = Token::Divide;    break;
     case '(': ctx.NextToken = Token::LParen;    break;
     case ')': ctx.NextToken = Token::RParen;    break;
+
+    case '!': ctx.NextToken = Token::Factorial; break;
+    case ':': ctx.NextToken = Token::Assign;    break;
+
+    case '-':
+        if (ctx.InBuffer[ctx.CurrIx+1] == '>')
+        {
+            ctx.NextToken = Token::Map;
+            ctx.CurrIx += 2;
+            return;
+        }
+
+        ctx.NextToken = Token::Minus;
+        break;
 
     default:
         if (is_symbol_char(c, true))
@@ -201,7 +231,9 @@ bool expect(ParseCtx& ctx, Token t)
     if (accept(ctx, t))
         return true;
 
-    on_parse_error(ctx, "unexpected token");
+    char msg[256];
+    sprintf(msg, "unexpected token. expected %s", kTokenNames[int(t)]);
+    on_parse_error(ctx, msg);
     return false;
 }
 
@@ -219,6 +251,22 @@ double expect_number(ParseCtx& ctx)
 
     on_parse_error(ctx, "expected number");
     return 0;
+}
+
+bool expect_symbol(ParseCtx& ctx, char* outSymbolBuf)  // outSymbolBuf must be at least kMaxSymbolLength+1 long
+{
+    if (ctx.Error)
+        return false;
+
+    if (ctx.NextToken == Token::Symbol)
+    {
+        strcpy(outSymbolBuf, ctx.TokenSymbol);
+        advance_token(ctx);
+        return true;
+    }
+
+    on_parse_error(ctx, "expected symbol");
+    return false;
 }
 
 bool peek(const ParseCtx& ctx, Token t)

@@ -1,6 +1,7 @@
 #include "expr.h"
 
 #include "funcs.h"
+#include "maths.h"
 #include "parser.h"
 #include "symbols.h"
 
@@ -22,7 +23,7 @@ double parse_primary(ParseCtx& ctx)
     return expect_number(ctx);
 }
 
-// postfix ::= primary | symbol "(" expression ")" | symbol
+// postfix ::= primary | primary "!" | symbol "(" expression ")" | symbol
 double parse_postfix(ParseCtx& ctx)
 {
     if (peek(ctx, Token::Symbol))
@@ -41,8 +42,11 @@ double parse_postfix(ParseCtx& ctx)
                 return 0.0;
 
             double val;
-            if (eval_function(symbol, arg1, val))
+            if (eval_function(symbol, arg1, val, ctx))
                 return val;
+
+            if (ctx.Error)
+                return 0.0;
 
             ctx.CurrIx = sym_name_pos;
             on_parse_error(ctx, "unknown function");
@@ -60,7 +64,18 @@ double parse_postfix(ParseCtx& ctx)
         }
     }
 
-    return parse_primary(ctx);
+    double val = parse_primary(ctx);
+
+    if (accept(ctx, Token::Factorial))
+    {
+        if (!compute_factorial(val))
+        {
+            on_parse_error(ctx, "need a positive integer");
+            return 0.0;
+        }
+    }
+
+    return val;
 }
 
 // exponent ::= postfix [ "**" postfix ]
