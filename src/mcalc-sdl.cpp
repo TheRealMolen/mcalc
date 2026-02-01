@@ -1,10 +1,9 @@
 #include <SDL.h>
+#include <algorithm>
 #include <cstdio>
 
 #include "libcalc/libcalc.h"
-
-// picocalc-text-starter font
-#include "extern/font.h"
+#include "libcalc/font.h"
 
 SDL_Window* gWindow = nullptr;
 SDL_Surface* gBackBuffer = nullptr;
@@ -17,13 +16,10 @@ SDL_Surface* gBackBuffer = nullptr;
 // mirroring picocalc-text-starter defines
 #define WIDTH   320
 #define HEIGHT  320
-#define ROWS    (HEIGHT / GLYPH_HEIGHT)
 
-//const font_t* gFont = &font_5x10;
-//constexpr uint8_t kFontWidth = 5;
-const font_t* gFont = &font_10x16;
-constexpr uint8_t kFontWidth = 10;
-#define COLS    (WIDTH / kFontWidth)
+const Font* gFont = &font_10x16;
+//const Font* gFont = &font_5x10;
+
 
 uint16_t gFgCol = 0xff07;
 uint16_t gBgCol = 0x0000;
@@ -31,7 +27,7 @@ uint16_t gBgCol = 0x0000;
 SDL_Surface* gCharSurface = nullptr;
 bool init_lcd()
 {
-    gCharSurface = SDL_CreateRGBSurfaceWithFormat(0, kFontWidth, GLYPH_HEIGHT, 16, SDL_PIXELFORMAT_RGB565);
+    gCharSurface = SDL_CreateRGBSurfaceWithFormat(0, FONT_MAX_WIDTH, FONT_MAX_HEIGHT, 16, SDL_PIXELFORMAT_RGB565);
     if (!gCharSurface)
     {
         fprintf(stderr, "Failed to create tiny char surface: %s\n", SDL_GetError());
@@ -48,28 +44,31 @@ void cleanup_lcd()
     }
 }
 
-void lcd_putc(uint8_t column, uint8_t row, uint8_t c)
+
+struct GlyphMetric
 {
-    if (!gCharSurface)
-        return;
+    int Skip = 0;
+    int Advance = 0;
+};
 
-    if (SDL_MUSTLOCK(gCharSurface))
-        SDL_LockSurface(gCharSurface);
+GlyphMetric font_rasterise_char(const Font* font, char c, uint16_t* buf, int bufw, int bufh, int x=0, int y=0)
+{
+    const int glyphWidth = font->Width;
+    const int fullGlyphHeight = font->Height;
+    const int bytesPerGlyphRow = (glyphWidth + 7) / 8;
 
-    constexpr int kBytesPerGlyphRow = (kFontWidth + 7) / 8;
-    const uint8_t* glyph = &gFont->glyphs[c * GLYPH_HEIGHT * kBytesPerGlyphRow];
-    uint16_t* outPix = (uint16_t*)gCharSurface->pixels;
-    const int pitch = gCharSurface->pitch / sizeof(*outPix);
-    for (int i = 0; i < GLYPH_HEIGHT; ++i, ++glyph, outPix+=pitch)
+    const uint8_t* glyph = &font->Glyphs[c * fullGlyphHeight * bytesPerGlyphRow];
+
+    uint16_t* outPix = buf + x + (y*bufw);
+    const int pitch = bufw / sizeof(*buf);
+    
+    const int glyphHeight = std::min(fullGlyphHeight, bufh-y);
+
+    for (int i = 0; i < glyphHeight; ++i, glyph+=bytesPerGlyphRow, outPix+=pitch)
     {
         uint16_t g = *glyph;
-        if constexpr (kFontWidth > 8)
-        {
-            ++glyph;
-            g = (g << 8) | *glyph;
-        }
 
-        if constexpr (kFontWidth == 5)
+        if (glyphWidth == 5)
         {
             outPix[0] = (g & 0x10) ? gFgCol : gBgCol;
             outPix[1] = (g & 0x08) ? gFgCol : gBgCol;
@@ -77,8 +76,10 @@ void lcd_putc(uint8_t column, uint8_t row, uint8_t c)
             outPix[3] = (g & 0x02) ? gFgCol : gBgCol;
             outPix[4] = (g & 0x01) ? gFgCol : gBgCol;
         }
-        else if constexpr (kFontWidth == 10)
+        else if (glyphWidth == 10)
         {
+            g = (g << 8) | glyph[1];
+
             outPix[0] = (g & 0x200) ? gFgCol : gBgCol;
             outPix[1] = (g & 0x100) ? gFgCol : gBgCol;
             outPix[2] = (g & 0x080) ? gFgCol : gBgCol;
@@ -92,27 +93,66 @@ void lcd_putc(uint8_t column, uint8_t row, uint8_t c)
         }
     }
 
+    if (font == &font_10x16)
+    {
+        if (c == '\'' || c == '.' || c == ',' || c == ';' || c == ':')
+            return { .Skip = 3, .Advance = glyphWidth - 7 };
+        if (c == 'i' || c == 'l' || c == '1')
+            return { .Skip = 2, .Advance = glyphWidth - 4 };
+        if (c == 'f' || c == 't')
+            return { .Skip = 1, .Advance = glyphWidth - 2 };
+    }
+    else if (font == &font_5x10)
+    {
+        if (c == 'm' || c == '/' || c == 'w' || c == 'v' || c == 'W' || c == 'V')
+            return { .Advance = glyphWidth + 1 };
+        if (c == 'l' || c == 'I' || c == '1')
+            return { .Skip = 1, .Advance = glyphWidth - 1 };
+    }
+
+    return { .Advance = glyphWidth };
+}
+
+
+// draws a character to the screen at the specified spot
+// returns the width of the drawn character
+int lcd_putc(int x, int y, uint8_t c)
+{
+    if (!gCharSurface)
+        return x;
+
+    if (SDL_MUSTLOCK(gCharSurface))
+        SDL_LockSurface(gCharSurface);
+
+    const GlyphMetric metric = font_rasterise_char(gFont, c,
+        (uint16_t*)gCharSurface->pixels,
+        gCharSurface->pitch, gCharSurface->h,
+        0, 0);
+        
     if (SDL_MUSTLOCK(gCharSurface))
         SDL_UnlockSurface(gCharSurface);
         
-    SDL_Rect dstRect { column * kFontWidth, row * GLYPH_HEIGHT, 0, 0 };
-    if (SDL_BlitSurface(gCharSurface, NULL, gBackBuffer, &dstRect) < 0)
+    SDL_Rect srcRect { metric.Skip, 0, metric.Advance, gFont->Height };
+    SDL_Rect dstRect { x, y, 0, 0 };
+    if (SDL_BlitSurface(gCharSurface, &srcRect, gBackBuffer, &dstRect) < 0)
     {
         fprintf(stderr, "BlitSurface error: %s\n", SDL_GetError());
     }
+
+    return metric.Advance;
 }
 
-uint8_t gCursorX = 0;
-uint8_t gCursorY = 0;
+int gCursorX = 0;
+int gCursorY = 0;
 
-void lcd_inc_column()
+void lcd_inc_column(int advance)
 {
-    ++gCursorX;
+    gCursorX += advance;
 
-    if (gCursorX >= COLS)
+    if (gCursorX >= WIDTH)
     {
         gCursorX = 0;
-        ++gCursorY;
+        gCursorY += gFont->Height;
     }
 }
 
@@ -128,22 +168,27 @@ void lcd_show_cursor()
 
 void lcd_scroll_up_one_line()
 {
-    SDL_Rect srcRect { 0, GLYPH_HEIGHT, WIDTH, HEIGHT };
+    const int glyphHeight = gFont->Height;
+
+    SDL_Rect srcRect { 0, glyphHeight, WIDTH, HEIGHT };
     SDL_Rect dstRect { 0, 0, WIDTH, HEIGHT };
     SDL_BlitSurface(gBackBuffer, &srcRect, gBackBuffer, &dstRect);
 
-    SDL_Rect clrRect { 0, HEIGHT-GLYPH_HEIGHT, WIDTH, GLYPH_HEIGHT };
+    SDL_Rect clrRect { 0, HEIGHT-glyphHeight, WIDTH, glyphHeight };
     SDL_FillRect(gBackBuffer, &clrRect, gBgCol);
 
-    if (gCursorY > 0)
-        --gCursorY;
+    if (gCursorY > glyphHeight)
+        gCursorY -= glyphHeight;
+    else
+        gCursorY = 0;
 }
 
 void lcd_next_line()
 {
-    ++gCursorY;
+    const int glyphHeight = gFont->Height;
+    gCursorY += glyphHeight;
 
-    while(gCursorY >= ROWS)
+    while(gCursorY >= (HEIGHT - glyphHeight))
         lcd_scroll_up_one_line();
 }
 
@@ -155,16 +200,7 @@ void display_emit(char c)
     {
     case SDLK_BACKSPACE:
         if (gCursorX > 0)
-            --gCursorX;
-        break;
-
-    case SDLK_TAB:
-        gCursorX = (gCursorX + 4) & ~3;
-        if (gCursorX >= COLS-1)
-        {
-            gCursorX = 0;
-            lcd_next_line();
-        }
+            gCursorX -= gFont->Width;
         break;
 
     case SDLK_RETURN:
@@ -176,8 +212,8 @@ void display_emit(char c)
     default:
         if (c >= 0x20 && c < 0x7f)
         {
-            lcd_putc(gCursorX, gCursorY, c);
-            lcd_inc_column();
+            const int advance = lcd_putc(gCursorX, gCursorY, c);
+            lcd_inc_column(advance);
         }
     }
 }
@@ -279,21 +315,7 @@ int main()
 
     SDL_FillRect(gBackBuffer, NULL, 0);
 
-/*    lcd_putc(0, 0, 'T');
-    lcd_putc(1, 0, 'o');
-    lcd_putc(2, 0, 'p');
-    lcd_putc(3, 0, 'L');
-    lcd_putc(0, ROWS-1, 'B');
-    lcd_putc(1, ROWS-1, 't');
-    lcd_putc(2, ROWS-1, 'm');
-    lcd_putc(3, ROWS-1, 'L');
-    lcd_putc(COLS-4, ROWS-1, 'B');
-    lcd_putc(COLS-3, ROWS-1, 't');
-    lcd_putc(COLS-2, ROWS-1, 'm');
-    lcd_putc(COLS-1, ROWS-1, 'R');
-*/
-
-    display_puts("molencalc v11     don't panic\n\n");
+    display_puts("molencalc v12     don't panic\n\n");
     display_puts(">");
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);

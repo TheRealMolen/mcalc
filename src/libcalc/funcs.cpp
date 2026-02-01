@@ -123,15 +123,8 @@ bool eval_function(const char* name, double arg1, double& outVal, ParseCtx& ctx)
     {
         if (func.IsUsed && (strcmp(func.Name, name) == 0))
         {
-            define_value(func.Arg, arg1, ctx);
-
-            ParseCtx innerCtx { .InBuffer = func.Def, .ResBuffer = ctx.ResBuffer, .ResBufferLen = ctx.ResBufferLen };
-            advance_token(innerCtx);
-            outVal = parse_expression(innerCtx);
-
-            undef_value(func.Arg);
-
-            return !innerCtx.Error;
+            outVal = eval_user_func(&func, arg1, ctx);
+            return !ctx.Error;
         }
     }
 
@@ -139,17 +132,44 @@ bool eval_function(const char* name, double arg1, double& outVal, ParseCtx& ctx)
     return false;
 }
 
+double eval_user_func(const UserFunction* func, double arg1, ParseCtx& ctx)
+{
+    if (!func)
+    {
+        on_parse_error(ctx, "missing function");
+        return 0.0f;
+    }
+
+    define_value(func->Arg, arg1, ctx);
+
+    ParseCtx innerCtx { .InBuffer = func->Def, .ResBuffer = ctx.ResBuffer, .ResBufferLen = ctx.ResBufferLen };
+    advance_token(innerCtx);
+    double val = parse_expression(innerCtx);
+
+    if (innerCtx.Error)
+        ctx.Error = true;
+
+    undef_value(func->Arg);
+
+    return val;
+}
+
 //-----------------------------------------------------------------------------------------------
 
 bool is_user_func(const char* name)
 {
+    return (lookup_user_func(name) != nullptr);
+}
+
+const UserFunction* lookup_user_func(const char* name)
+{
     for (const UserFunction& func : gUserFuncs)
     {
         if (func.IsUsed && (strcmp(func.Name, name) == 0))
-            return true;
+            return &func;
     }
 
-    return false;
+    return nullptr;
 }
 
 //-----------------------------------------------------------------------------------------------

@@ -28,7 +28,7 @@ YACC := bison
 YFLAGS := -d
 
 
-$(BUILD_DIR)/$(TARGET): $(OBJS) src/extern/font-10x16.c
+$(BUILD_DIR)/$(TARGET): $(OBJS) src/libcalc/fonts/font-10x16.c
 	$(CXX) $(OBJS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/%.c.o: %.c Makefile
@@ -45,7 +45,7 @@ $(BUILD_DIR)/%..o: %.cpp Makefile
 
 # font file
 PACKFONT := python3 tools/packfont.py
-src/extern/font-10x16.c: res/font-10x16.png res/font-10x16.layout.txt tools/packfont.py Makefile
+src/libcalc/fonts/font-10x16.c: res/font-10x16.png res/font-10x16.layout.txt tools/packfont.py Makefile
 	$(PACKFONT) $< $(subst .png,.layout.txt,$<) -W 10 -H 16 -o $@
 
 .PHONY: clean

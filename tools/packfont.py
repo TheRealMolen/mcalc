@@ -54,11 +54,12 @@ def emit_prologue(outfile, imgfilename, width, height):
     outfile.write(f'// This file was created using packfont.py by molen, with data from {imgfilename}\n')
     outfile.write('//\n')
     outfile.write('\n')
-    outfile.write('#include "font.h"\n')
+    outfile.write('#include "../font.h"\n')
     outfile.write('\n')
-    outfile.write(f'const font_t font_{width}x{height} = {{\n')
-    outfile.write(f'    .width = {width},\n')
-    outfile.write(f'    .glyphs = {{\n')
+    outfile.write(f'const Font font_{width}x{height} = {{\n')
+    outfile.write(f'    .Width = {width},\n')
+    outfile.write(f'    .Height = {height},\n')
+    outfile.write(f'    .Glyphs = {{\n')
 
 
 def emit_row(row, width):

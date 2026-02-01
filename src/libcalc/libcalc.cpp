@@ -3,6 +3,7 @@
 #include "expr.h"
 #include "funcs.h"
 #include "parser.h"
+#include "plot.h"
 
 #include <cstdio>
 #include <cstring>
@@ -11,7 +12,7 @@
 
 void dtostr_human(double d, char* s, int sLen)
 {
-    snprintf(s, sLen, "    = %.8g", d);
+    snprintf(s, sLen, "  = %.8g", d);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -50,15 +51,8 @@ bool parse_statement(ParseCtx& ctx)
 
 //-------------------------------------------------------------------------------------------------
 
-struct Axis
-{
-    char Name[kMaxSymbolLength+1];
-    double Lo = -1;
-    double Hi = 1;
-};
-
 // axis ::= expression "<" symbol "<" expression
-bool parse_axis(ParseCtx& ctx, Axis& axis)
+bool parse_axis(ParseCtx& ctx, PlotAxis& axis)
 {
     double lo = parse_expression(ctx);
     if (ctx.Error)
@@ -97,14 +91,14 @@ bool cmd_graph_y(ParseCtx& ctx)
         return false;
     }
 
-    Axis x { .Name = "x" };
-    Axis y { .Name = "y" };
+    PlotAxis x { .Name = "x" };
+    PlotAxis y { .Name = "y" };
 
     while (!peek(ctx, Token::Eof))
     {
         const int axisStartIx = ctx.CurrIx;
 
-        Axis axis;
+        PlotAxis axis;
         if (!parse_axis(ctx, axis))
             return false;
 
@@ -181,7 +175,7 @@ bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
 
     if (isStatement && parse_statement(parseCtx))
     {
-        strcpy(resBuffer, "   ok.");
+        strcpy(resBuffer, "  ok.");
     }
     else if (isCommand)
     {
