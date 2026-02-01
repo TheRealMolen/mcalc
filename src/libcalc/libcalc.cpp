@@ -50,6 +50,119 @@ bool parse_statement(ParseCtx& ctx)
 
 //-------------------------------------------------------------------------------------------------
 
+struct Axis
+{
+    char Name[kMaxSymbolLength+1];
+    double Lo = -1;
+    double Hi = 1;
+};
+
+// axis ::= expression "<" symbol "<" expression
+bool parse_axis(ParseCtx& ctx, Axis& axis)
+{
+    double lo = parse_expression(ctx);
+    if (ctx.Error)
+        return false;
+
+    if (!expect(ctx, Token::LessThan))
+        return false;
+    if (!expect_symbol(ctx, axis.Name))
+        return false;
+    if (!expect(ctx, Token::LessThan))
+        return false;
+
+    double hi = parse_expression(ctx);
+    if (ctx.Error)
+        return false;
+
+    axis.Lo = lo;
+    axis.Hi = hi;
+    return true;
+}
+
+
+// :gy f -pi<x<pi -1<y<1
+// cmd_graph ::= ":" "gy" symbol [axis [axis]]
+bool cmd_graph_y(ParseCtx& ctx)
+{
+    char func_name[kMaxSymbolLength+1];
+    if (!expect_symbol(ctx, func_name))
+    {
+        on_parse_error(ctx, "need user func name for y=f(x)");
+        return false;
+    }
+    if (!is_user_func(func_name))
+    {
+        on_parse_error(ctx, "unknown user function");
+        return false;
+    }
+
+    Axis x { .Name = "x" };
+    Axis y { .Name = "y" };
+
+    while (!peek(ctx, Token::Eof))
+    {
+        const int axisStartIx = ctx.CurrIx;
+
+        Axis axis;
+        if (!parse_axis(ctx, axis))
+            return false;
+
+        if (strcmp(axis.Name, x.Name) == 0)
+            x = axis;
+        else if (strcmp(axis.Name, y.Name) == 0)
+            y = axis;
+        else
+        {
+            ctx.CurrIx = axisStartIx;
+            on_parse_error(ctx, "unknown axis");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+//-------------------------------------------------------------------------------------------------
+
+bool cmd_help(ParseCtx& ctx)
+{
+    const char* helpText =
+R"(commands start with :
+graph of y=f(x)
+  :gy fn [lo<x<hi] [lo<y<hi]
+)";
+
+    if (strlen(helpText) < size_t(ctx.ResBufferLen))
+        strcpy(ctx.ResBuffer, helpText);
+    else
+        strcpy(ctx.ResBuffer, "error: too much help for buf");
+
+    return true;
+}
+
+//-------------------------------------------------------------------------------------------------
+
+bool parse_command(ParseCtx& ctx)
+{
+    if (!expect(ctx, Token::Assign))
+        return false;
+
+    char cmd[kMaxSymbolLength+1];
+    if (!expect_symbol(ctx, cmd))
+        return false;
+
+    if (strcmp(cmd, "gy") == 0)
+        return cmd_graph_y(ctx);
+    else if ((strcmp(cmd, "help") == 0) || (strcmp(cmd, "h") == 0))
+        return cmd_help(ctx);
+
+    on_parse_error(ctx, "unknown command");
+    return false;
+}
+
+//-------------------------------------------------------------------------------------------------
+
 bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
 {
     if (!resBuffer)
@@ -59,19 +172,23 @@ bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
     ParseCtx parseCtx { .InBuffer=expr, .ResBuffer=resBuffer, .ResBufferLen=resBufferLen };
     advance_token(parseCtx);
 
-    // scan the expression to see if there's a definition symbol in there
+    // scan the expression to see if it's something unusual
+    const bool isCommand = expr && expr[0] == ':';
     const bool isStatement = (strstr(expr, "->") != nullptr);
+    const bool isExpression = !isCommand && !isStatement;
 
     double result = 0.0;
 
-    if (isStatement)
+    if (isStatement && parse_statement(parseCtx))
     {
-        if (parse_statement(parseCtx))
-        {
-            strcpy(resBuffer, "   ok.");
-        }
+        strcpy(resBuffer, "   ok.");
     }
-    else
+    else if (isCommand)
+    {
+        // commands are expected to manage their own feedback
+        parse_command(parseCtx);
+    }
+    else if (isExpression)
     {
         result = parse_expression(parseCtx);
     }
@@ -82,7 +199,7 @@ bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
     if (parseCtx.Error)
         return false;
 
-    if (!isStatement)
+    if (isExpression)
         dtostr_human(result, resBuffer, resBufferLen);
 
     return true;

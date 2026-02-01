@@ -20,6 +20,8 @@ enum class Token
     LParen, RParen,
     Factorial,
 
+    LessThan, GreaterThan,
+
     Assign, Map,
 
     COUNT,

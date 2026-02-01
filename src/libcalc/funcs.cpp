@@ -139,5 +139,18 @@ bool eval_function(const char* name, double arg1, double& outVal, ParseCtx& ctx)
     return false;
 }
 
+//-----------------------------------------------------------------------------------------------
 
+bool is_user_func(const char* name)
+{
+    for (const UserFunction& func : gUserFuncs)
+    {
+        if (func.IsUsed && (strcmp(func.Name, name) == 0))
+            return true;
+    }
+
+    return false;
+}
+
+//-----------------------------------------------------------------------------------------------
 
