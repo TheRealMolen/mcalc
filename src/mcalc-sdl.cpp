@@ -20,6 +20,14 @@ SDL_Surface* gBackBuffer = nullptr;
 const Font* gFont = &font_10x16;
 //const Font* gFont = &font_5x10;
 
+bool gMonospace = false;
+
+int gCursorX = 0;
+int gCursorY = 0;
+
+constexpr int gMaxColIx = (WIDTH/2) - 1;
+int gCurrColIx = 0;
+uint8_t gColWidths[gMaxColIx+1];
 
 uint16_t gFgCol = 0xff07;
 uint16_t gBgCol = 0x0000;
@@ -45,78 +53,21 @@ void cleanup_lcd()
 }
 
 
-struct GlyphMetric
+void lcd_erase_cursor()
 {
-    int Skip = 0;
-    int Advance = 0;
-};
-
-GlyphMetric font_rasterise_char(const Font* font, char c, uint16_t* buf, int bufw, int bufh, int x=0, int y=0)
-{
-    const int glyphWidth = font->Width;
-    const int fullGlyphHeight = font->Height;
-    const int bytesPerGlyphRow = (glyphWidth + 7) / 8;
-
-    const uint8_t* glyph = &font->Glyphs[c * fullGlyphHeight * bytesPerGlyphRow];
-
-    uint16_t* outPix = buf + x + (y*bufw);
-    const int pitch = bufw / sizeof(*buf);
-    
-    const int glyphHeight = std::min(fullGlyphHeight, bufh-y);
-
-    for (int i = 0; i < glyphHeight; ++i, glyph+=bytesPerGlyphRow, outPix+=pitch)
-    {
-        uint16_t g = *glyph;
-
-        if (glyphWidth == 5)
-        {
-            outPix[0] = (g & 0x10) ? gFgCol : gBgCol;
-            outPix[1] = (g & 0x08) ? gFgCol : gBgCol;
-            outPix[2] = (g & 0x04) ? gFgCol : gBgCol;
-            outPix[3] = (g & 0x02) ? gFgCol : gBgCol;
-            outPix[4] = (g & 0x01) ? gFgCol : gBgCol;
-        }
-        else if (glyphWidth == 10)
-        {
-            g = (g << 8) | glyph[1];
-
-            outPix[0] = (g & 0x200) ? gFgCol : gBgCol;
-            outPix[1] = (g & 0x100) ? gFgCol : gBgCol;
-            outPix[2] = (g & 0x080) ? gFgCol : gBgCol;
-            outPix[3] = (g & 0x040) ? gFgCol : gBgCol;
-            outPix[4] = (g & 0x020) ? gFgCol : gBgCol;
-            outPix[5] = (g & 0x010) ? gFgCol : gBgCol;
-            outPix[6] = (g & 0x008) ? gFgCol : gBgCol;
-            outPix[7] = (g & 0x004) ? gFgCol : gBgCol;
-            outPix[8] = (g & 0x002) ? gFgCol : gBgCol;
-            outPix[9] = (g & 0x001) ? gFgCol : gBgCol;
-        }
-    }
-
-    if (font == &font_10x16)
-    {
-        if (c == '\'' || c == '.' || c == ',' || c == ';' || c == ':')
-            return { .Skip = 3, .Advance = glyphWidth - 7 };
-        if (c == 'i' || c == 'l' || c == '1')
-            return { .Skip = 2, .Advance = glyphWidth - 4 };
-        if (c == 'f' || c == 't')
-            return { .Skip = 1, .Advance = glyphWidth - 2 };
-    }
-    else if (font == &font_5x10)
-    {
-        if (c == 'm' || c == '/' || c == 'w' || c == 'v' || c == 'W' || c == 'V')
-            return { .Advance = glyphWidth + 1 };
-        if (c == 'l' || c == 'I' || c == '1')
-            return { .Skip = 1, .Advance = glyphWidth - 1 };
-    }
-
-    return { .Advance = glyphWidth };
+    SDL_Rect rect { gCursorX, gCursorY, gFont->Width-1, gFont->Height };
+    SDL_FillRect(gBackBuffer, &rect, gBgCol);
 }
 
+void lcd_show_cursor()
+{
+    SDL_Rect rect { gCursorX, gCursorY, gFont->Width-1, gFont->Height };
+    SDL_FillRect(gBackBuffer, &rect, gFgCol);
+}
 
 // draws a character to the screen at the specified spot
 // returns the width of the drawn character
-int lcd_putc(int x, int y, uint8_t c)
+uint8_t lcd_putc(int x, int y, uint8_t c)
 {
     if (!gCharSurface)
         return x;
@@ -124,7 +75,7 @@ int lcd_putc(int x, int y, uint8_t c)
     if (SDL_MUSTLOCK(gCharSurface))
         SDL_LockSurface(gCharSurface);
 
-    const GlyphMetric metric = font_rasterise_char(gFont, c,
+    font_rasterise_char(gFont, c, gFgCol, gBgCol,
         (uint16_t*)gCharSurface->pixels,
         gCharSurface->pitch, gCharSurface->h,
         0, 0);
@@ -132,6 +83,7 @@ int lcd_putc(int x, int y, uint8_t c)
     if (SDL_MUSTLOCK(gCharSurface))
         SDL_UnlockSurface(gCharSurface);
         
+    const GlyphMetric metric = font_get_glyph_metric(gFont, c, gMonospace);
     SDL_Rect srcRect { metric.Skip, 0, metric.Advance, gFont->Height };
     SDL_Rect dstRect { x, y, 0, 0 };
     if (SDL_BlitSurface(gCharSurface, &srcRect, gBackBuffer, &dstRect) < 0)
@@ -142,32 +94,46 @@ int lcd_putc(int x, int y, uint8_t c)
     return metric.Advance;
 }
 
-int gCursorX = 0;
-int gCursorY = 0;
-
-void lcd_inc_column(int advance)
+void lcd_inc_column(uint8_t advance)
 {
     gCursorX += advance;
 
-    if (gCursorX >= WIDTH)
+    gColWidths[gCurrColIx] = advance;
+    ++gCurrColIx;
+
+    if (gCursorX >= WIDTH || gCurrColIx > gMaxColIx)
     {
         gCursorX = 0;
         gCursorY += gFont->Height;
+
+        // TODO: this breaks backspace from one line to the previous
+        // ideally we'd remember the start ix of each line and only reset when flushing
+        gCurrColIx = 0;
     }
 }
 
-void lcd_erase_cursor()
+void lcd_backspace()
 {
-    // TODO
-}
+    if (gCurrColIx <= 0)
+        return;
 
-void lcd_show_cursor()
-{
-    // TODO
+    lcd_erase_cursor();
+
+    --gCurrColIx;
+
+    const int glyphWidth = gColWidths[gCurrColIx];
+    gCursorX -= glyphWidth;
+
+    SDL_Rect rect { gCursorX, gCursorY, glyphWidth, gFont->Height };
+    SDL_FillRect(gBackBuffer, &rect, gBgCol);
+
+    lcd_show_cursor();
 }
 
 void lcd_scroll_up_one_line()
 {
+    lcd_erase_cursor();
+
     const int glyphHeight = gFont->Height;
 
     SDL_Rect srcRect { 0, glyphHeight, WIDTH, HEIGHT };
@@ -181,6 +147,8 @@ void lcd_scroll_up_one_line()
         gCursorY -= glyphHeight;
     else
         gCursorY = 0;
+
+    lcd_show_cursor();
 }
 
 void lcd_next_line()
@@ -199,23 +167,25 @@ void display_emit(char c)
     switch(c)
     {
     case SDLK_BACKSPACE:
-        if (gCursorX > 0)
-            gCursorX -= gFont->Width;
+        lcd_backspace();
         break;
 
     case SDLK_RETURN:
     case '\n':
         gCursorX = 0;
+        gCurrColIx = 0;
         lcd_next_line();
         break;
 
     default:
         if (c >= 0x20 && c < 0x7f)
         {
-            const int advance = lcd_putc(gCursorX, gCursorY, c);
+            const uint8_t advance = lcd_putc(gCursorX, gCursorY, c);
             lcd_inc_column(advance);
         }
     }
+
+    lcd_show_cursor();
 }
 
 void display_puts(const char* s)
@@ -315,7 +285,7 @@ int main()
 
     SDL_FillRect(gBackBuffer, NULL, 0);
 
-    display_puts("molencalc v12     don't panic\n\n");
+    display_puts("molencalc v13     don't panic\n\n");
     display_puts(">");
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);

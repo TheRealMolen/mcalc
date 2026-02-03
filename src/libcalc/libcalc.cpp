@@ -4,6 +4,7 @@
 #include "funcs.h"
 #include "parser.h"
 #include "plot.h"
+#include "symbols.h"
 
 #include <cstdio>
 #include <cstring>
@@ -119,12 +120,36 @@ bool cmd_graph_y(ParseCtx& ctx)
 
 //-------------------------------------------------------------------------------------------------
 
+// :let x=3
+// cmd_let ::= ":" "let" symbol "equals" expression
+bool cmd_let(ParseCtx& ctx)
+{
+    char symbol[kMaxSymbolLength+1];
+    if (!expect_symbol(ctx, symbol))
+    {
+        on_parse_error(ctx, "need symbol name");
+        return false;
+    }
+    if (!expect(ctx, Token::Equals))
+        return false;
+
+    const double val = parse_expression(ctx);
+    if (ctx.Error)
+        return false;
+
+    return define_value(symbol, val, ctx);
+}
+
+//-------------------------------------------------------------------------------------------------
+
 bool cmd_help(ParseCtx& ctx)
 {
     const char* helpText =
 R"(commands start with :
 graph of y=f(x)
   :gy fn [lo<x<hi] [lo<y<hi]
+set named val
+  :let x=expr
 )";
 
     if (strlen(helpText) < size_t(ctx.ResBufferLen))
@@ -148,7 +173,9 @@ bool parse_command(ParseCtx& ctx)
 
     if (strcmp(cmd, "gy") == 0)
         return cmd_graph_y(ctx);
-    else if ((strcmp(cmd, "help") == 0) || (strcmp(cmd, "h") == 0))
+    if (strcmp(cmd, "let") == 0)
+        return cmd_let(ctx);
+    if ((strcmp(cmd, "help") == 0) || (strcmp(cmd, "h") == 0))
         return cmd_help(ctx);
 
     on_parse_error(ctx, "unknown command");

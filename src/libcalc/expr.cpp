@@ -6,6 +6,7 @@
 #include "symbols.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 //-------------------------------------------------------------------------------------------------
@@ -20,12 +21,19 @@ double parse_primary(ParseCtx& ctx)
         return val;
     }
 
+    if (accept(ctx, Token::Minus))
+    {
+        return -expect_number(ctx);
+    }
+
     return expect_number(ctx);
 }
 
 // postfix ::= primary | primary "!" | symbol "(" expression ")" | symbol
 double parse_postfix(ParseCtx& ctx)
 {
+    char errBuf[20+kMaxSymbolLength+1];
+
     if (peek(ctx, Token::Symbol))
     {
         const int sym_name_pos = ctx.CurrIx;
@@ -49,7 +57,8 @@ double parse_postfix(ParseCtx& ctx)
                 return 0.0;
 
             ctx.CurrIx = sym_name_pos;
-            on_parse_error(ctx, "unknown function");
+            sprintf(errBuf, "unknown func: %s", symbol);
+            on_parse_error(ctx, errBuf);
             return 0.0;
         }
         else
@@ -59,7 +68,8 @@ double parse_postfix(ParseCtx& ctx)
                 return val;
 
             ctx.CurrIx = sym_name_pos;
-            on_parse_error(ctx, "unknown named value");
+            sprintf(errBuf, "unknown named val: %s", symbol);
+            on_parse_error(ctx, errBuf);
             return 0.0;
         }
     }

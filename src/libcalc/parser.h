@@ -21,6 +21,7 @@ enum class Token
     Factorial,
 
     LessThan, GreaterThan,
+    Equals,
 
     Assign, Map,
 

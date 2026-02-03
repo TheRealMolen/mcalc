@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstdio>
@@ -18,6 +19,7 @@ const char* kTokenNames[] =
     "(",")",
     "!",
     "<",">",
+    "=",
     ":", "->",
 };
 static_assert((sizeof(kTokenNames) / sizeof(kTokenNames[0])) == size_t(Token::COUNT));
@@ -46,6 +48,8 @@ void on_parse_error(ParseCtx& ctx, const char* msg)
             *(resCurr++) = '\n';
     }
 
+#ifdef MC_MONOSPACE
+    // adding a marker to the bad char is a problem with variable-width fonts
     for (const char* in=ctx.InBuffer; *in && resCurr < resBufEnd; ++in, ++resCurr)
         *resCurr = *in;
     if (resCurr < resBufEnd)
@@ -57,6 +61,26 @@ void on_parse_error(ParseCtx& ctx, const char* msg)
         *(resCurr++) = '^';
     if (resCurr < resBufEnd)
         *(resCurr++) = '\n';
+#else
+    {
+        char nearBuf[16];
+        strcpy(nearBuf, "  near '");
+
+        char* to = nearBuf + strlen(nearBuf);
+
+        const int startIx = std::max(0, ctx.CurrIx-1);
+        const char* from = ctx.InBuffer + startIx;
+        for (int ix = 0; ix+1 < 6 && *from; ++ix, ++from, ++to)
+            *to = *from;
+        *(to++) = '\'';
+        *to = 0;
+
+        for (const char* in=nearBuf; *in && resCurr < resBufEnd; ++in, ++resCurr)
+            *resCurr = *in;
+        if (resCurr < resBufEnd)
+            *(resCurr++) = '\n';
+    }
+#endif
 
     *resCurr = 0;
     *resBufEnd = 0;
@@ -188,6 +212,7 @@ void advance_token(ParseCtx& ctx)
 
     case '!': ctx.NextToken = Token::Factorial; break;
     case ':': ctx.NextToken = Token::Assign;    break;
+    case '=': ctx.NextToken = Token::Equals;    break;
 
     case '-':
     {
@@ -198,12 +223,6 @@ void advance_token(ParseCtx& ctx)
             ctx.CurrIx += 2;
             return;
         }
-        if (nextc >= '0' && nextc <= '9')
-        {
-            parse_number(ctx);
-            return; // nb. return early so we don't increment currIx again
-        }
-
         ctx.NextToken = Token::Minus;
         break;
     }
