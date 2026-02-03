@@ -54,7 +54,7 @@ void font_rasterise_char(
     const uint8_t* glyph = &font->Glyphs[c * fullGlyphHeight * bytesPerGlyphRow];
 
     uint16_t* outPix = buf + x + (y*bufw);
-    const int pitch = bufw / sizeof(*buf);
+    const int pitch = bufw;
     
     const int glyphHeight = std::min(fullGlyphHeight, bufh-y);
 

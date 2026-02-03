@@ -29,7 +29,7 @@ constexpr int gMaxColIx = (WIDTH/2) - 1;
 int gCurrColIx = 0;
 uint8_t gColWidths[gMaxColIx+1];
 
-uint16_t gFgCol = 0xff07;
+uint16_t gFgCol = 0xff0a;
 uint16_t gBgCol = 0x0000;
 
 SDL_Surface* gCharSurface = nullptr;
@@ -55,13 +55,13 @@ void cleanup_lcd()
 
 void lcd_erase_cursor()
 {
-    SDL_Rect rect { gCursorX, gCursorY, gFont->Width-1, gFont->Height };
+    SDL_Rect rect { gCursorX, gCursorY+gFont->Height-1, gFont->Width-1, 1 };
     SDL_FillRect(gBackBuffer, &rect, gBgCol);
 }
 
-void lcd_show_cursor()
+void lcd_draw_cursor()
 {
-    SDL_Rect rect { gCursorX, gCursorY, gFont->Width-1, gFont->Height };
+    SDL_Rect rect { gCursorX, gCursorY+gFont->Height-1, gFont->Width-1, 1 };
     SDL_FillRect(gBackBuffer, &rect, gFgCol);
 }
 
@@ -77,7 +77,7 @@ uint8_t lcd_putc(int x, int y, uint8_t c)
 
     font_rasterise_char(gFont, c, gFgCol, gBgCol,
         (uint16_t*)gCharSurface->pixels,
-        gCharSurface->pitch, gCharSurface->h,
+        gCharSurface->pitch / sizeof(uint16_t), gCharSurface->h,
         0, 0);
         
     if (SDL_MUSTLOCK(gCharSurface))
@@ -127,7 +127,7 @@ void lcd_backspace()
     SDL_Rect rect { gCursorX, gCursorY, glyphWidth, gFont->Height };
     SDL_FillRect(gBackBuffer, &rect, gBgCol);
 
-    lcd_show_cursor();
+    lcd_draw_cursor();
 }
 
 void lcd_scroll_up_one_line()
@@ -148,7 +148,7 @@ void lcd_scroll_up_one_line()
     else
         gCursorY = 0;
 
-    lcd_show_cursor();
+    lcd_draw_cursor();
 }
 
 void lcd_next_line()
@@ -185,7 +185,7 @@ void display_emit(char c)
         }
     }
 
-    lcd_show_cursor();
+    lcd_draw_cursor();
 }
 
 void display_puts(const char* s)
@@ -254,10 +254,17 @@ void eval_input()
     gReadBuf[0] = 0;
 }
 
+bool gToggleCursor = false;
+Uint32 cursor_timer_func(Uint32 interval, void*)
+{
+    gToggleCursor = true;
+    return interval;
+}
+
 
 int main()
 {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
     {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
         return 1;
@@ -290,6 +297,9 @@ int main()
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
     SDL_UpdateWindowSurface(gWindow);
+
+    SDL_TimerID cursorTimer = SDL_AddTimer(500, cursor_timer_func, nullptr);
+    bool showCursor = true;
 
     bool wantsQuit = false;
     while (!wantsQuit)
@@ -339,10 +349,22 @@ int main()
             }
         }
 
+        if (gToggleCursor)
+        {
+            gToggleCursor = false;
+            showCursor = !showCursor;
+            if (showCursor)
+                lcd_draw_cursor();
+            else
+                lcd_erase_cursor();
+        }
+
         SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
         SDL_UpdateWindowSurface(gWindow);
 
     }
+
+    SDL_RemoveTimer(cursorTimer);
 
     cleanup_lcd();
     SDL_FreeSurface(gBackBuffer);
