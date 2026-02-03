@@ -190,15 +190,23 @@ void advance_token(ParseCtx& ctx)
     case ':': ctx.NextToken = Token::Assign;    break;
 
     case '-':
-        if (ctx.InBuffer[ctx.CurrIx+1] == '>')
+    {
+        const char nextc = ctx.InBuffer[ctx.CurrIx+1];
+        if (nextc == '>')
         {
             ctx.NextToken = Token::Map;
             ctx.CurrIx += 2;
             return;
         }
+        if (nextc >= '0' && nextc <= '9')
+        {
+            parse_number(ctx);
+            return; // nb. return early so we don't increment currIx again
+        }
 
         ctx.NextToken = Token::Minus;
         break;
+    }
 
     default:
         if (is_symbol_char(c, true))
