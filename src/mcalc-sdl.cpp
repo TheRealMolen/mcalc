@@ -326,7 +326,7 @@ int main()
 
     SDL_FillRect(gBackBuffer, NULL, 0);
 
-    display_puts("molencalc v13     don't panic\n\n");
+    display_puts("molencalc v15     don't panic\n\n");
     display_puts(">");
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
@@ -335,12 +335,14 @@ int main()
     SDL_TimerID cursorTimer = SDL_AddTimer(500, cursor_timer_func, nullptr);
     bool showCursor = true;
 
+#if 0
     const char* initText = "f: x -> sin(x)/x\n:g f -10<x<10, -0.5<y<1.5";
     for (const char* c = initText; *c; ++c)
     {
         if (handleInputChar(*c))
             eval_input();
     }
+#endif
 
     bool wantsQuit = false;
     while (!wantsQuit)
