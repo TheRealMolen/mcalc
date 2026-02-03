@@ -130,21 +130,19 @@ void lcd_backspace()
     lcd_draw_cursor();
 }
 
-void lcd_scroll_up_one_line()
+void lcd_scroll_up(uint32_t distance)
 {
     lcd_erase_cursor();
 
-    const int glyphHeight = gFont->Height;
-
-    SDL_Rect srcRect { 0, glyphHeight, WIDTH, HEIGHT };
+    SDL_Rect srcRect { 0, int(distance), WIDTH, HEIGHT };
     SDL_Rect dstRect { 0, 0, WIDTH, HEIGHT };
     SDL_BlitSurface(gBackBuffer, &srcRect, gBackBuffer, &dstRect);
 
-    SDL_Rect clrRect { 0, HEIGHT-glyphHeight, WIDTH, glyphHeight };
+    SDL_Rect clrRect { 0, HEIGHT-int(distance), WIDTH, int(distance) };
     SDL_FillRect(gBackBuffer, &clrRect, gBgCol);
 
-    if (gCursorY > glyphHeight)
-        gCursorY -= glyphHeight;
+    if (gCursorY > int(distance))
+        gCursorY -= distance;
     else
         gCursorY = 0;
 
@@ -157,10 +155,10 @@ void lcd_next_line()
     gCursorY += glyphHeight;
 
     while(gCursorY >= (HEIGHT - glyphHeight))
-        lcd_scroll_up_one_line();
+        lcd_scroll_up(glyphHeight);
 }
 
-void display_emit(char c)
+void lcd_emit(char c)
 {
     lcd_erase_cursor();
 
@@ -188,6 +186,35 @@ void display_emit(char c)
     lcd_draw_cursor();
 }
 
+void lcd_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh)
+{
+    // scroll up enough so there's at least imgh pixels free to draw on
+    // nb. we're over-clearing the back buf at this point as we're about to blat over a chunk with the img
+    int line_btm = gCursorY;
+    int img_top = HEIGHT - imgh;
+    if (line_btm > img_top)
+    {
+        lcd_scroll_up(line_btm - img_top);
+        line_btm = gCursorY;
+    }
+    img_top = std::min(line_btm, img_top);
+
+    uint16_t* pixels_nonconst = const_cast<uint16_t*>(pixels);
+    SDL_Surface* img_surf = SDL_CreateRGBSurfaceWithFormatFrom(
+        pixels_nonconst, imgw, imgh, 16, imgw * sizeof(pixels[0]), SDL_PIXELFORMAT_RGB565);
+    if (!img_surf)
+        return;
+
+    const int img_left = int(WIDTH - imgw - 1);
+    SDL_Rect dstRect { img_left, img_top, int(imgw), int(imgh) };
+    SDL_BlitSurface(img_surf, nullptr, gBackBuffer, &dstRect);
+
+    SDL_FreeSurface(img_surf);
+
+    gCursorY += imgh;
+}
+
+
 void display_puts(const char* s)
 {
     if (!s)
@@ -195,7 +222,7 @@ void display_puts(const char* s)
 
     while (*s)
     {
-        display_emit(*s);
+        lcd_emit(*s);
         ++s;
     }
 }
@@ -213,7 +240,7 @@ bool handleInputChar(char c)
         if (gReadBufIx == 0)
             return false;
 
-        display_emit(SDLK_RETURN);
+        lcd_emit(SDLK_RETURN);
 
         // null-terminate and return executable
         gReadBuf[gReadBufIx] = 0;
@@ -236,7 +263,7 @@ bool handleInputChar(char c)
         gReadBuf[gReadBufIx] = c;
         ++gReadBufIx;
 
-        display_emit(c);
+        lcd_emit(c);
     }
 
     return false;
@@ -248,6 +275,13 @@ void eval_input()
     char resBuf[1024];
     calc_eval(gReadBuf, resBuf, sizeof(resBuf));
     display_puts(resBuf);
+
+    if (const Plot* plot = get_plot())
+    {
+        lcd_put_image(plot->Pixels, MC_PLOT_WIDTH, MC_PLOT_HEIGHT);
+        reset_plot();
+    }
+
     display_puts("\n>");
 
     gReadBufIx = 0;
@@ -300,6 +334,13 @@ int main()
 
     SDL_TimerID cursorTimer = SDL_AddTimer(500, cursor_timer_func, nullptr);
     bool showCursor = true;
+
+    const char* initText = "f: x -> sin(x)/x\n:g f -10<x<10, -0.5<y<1.5";
+    for (const char* c = initText; *c; ++c)
+    {
+        if (handleInputChar(*c))
+            eval_input();
+    }
 
     bool wantsQuit = false;
     while (!wantsQuit)
