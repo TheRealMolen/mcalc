@@ -76,8 +76,8 @@ bool parse_axis(ParseCtx& ctx, PlotAxis& axis)
 }
 
 
-// :g f -pi<x<pi, -1<y<1
-// cmd_graph ::= ":" "g" symbol [axis ["," axis]]
+// g f -pi<x<pi, -1<y<1
+// cmd_graph ::= "g" symbol [axis ["," axis]]
 bool cmd_graph_y(ParseCtx& ctx)
 {
     char func_name[kMaxSymbolLength+1];
@@ -126,8 +126,8 @@ bool cmd_graph_y(ParseCtx& ctx)
 
 //-------------------------------------------------------------------------------------------------
 
-// :let x=3
-// cmd_let ::= ":" "let" symbol "equals" expression
+// let x=3
+// cmd_let ::= "let" symbol "equals" expression
 bool cmd_let(ParseCtx& ctx)
 {
     char symbol[kMaxSymbolLength+1];
@@ -151,11 +151,12 @@ bool cmd_let(ParseCtx& ctx)
 bool cmd_help(ParseCtx& ctx)
 {
     const char* helpText =
-R"(commands start with :
-graph of y=f(x)
-  :g fn [lo<x<hi] [lo<y<hi]
-set named val
-  :let x=expr
+R"(
+g fn [lo<x<hi] [lo<y<hi]
+   graph of y=f(x)
+
+let x=expr
+   set named val
 )";
 
     if (strlen(helpText) < size_t(ctx.ResBufferLen))
@@ -168,23 +169,23 @@ set named val
 
 //-------------------------------------------------------------------------------------------------
 
-bool parse_command(ParseCtx& ctx)
+bool try_parse_command(ParseCtx& ctx)
 {
-    if (!expect(ctx, Token::Assign))
+    if (!peek(ctx, Token::Symbol))
         return false;
 
-    char cmd[kMaxSymbolLength+1];
-    if (!expect_symbol(ctx, cmd))
-        return false;
+    const char* sym = ctx.TokenSymbol;
 
-    if (strcmp(cmd, "g") == 0)
-        return cmd_graph_y(ctx);
-    if (strcmp(cmd, "let") == 0)
-        return cmd_let(ctx);
-    if ((strcmp(cmd, "help") == 0) || (strcmp(cmd, "h") == 0))
-        return cmd_help(ctx);
+    auto eatsym = [&ctx]() -> bool
+    { return expect(ctx, Token::Symbol); };
 
-    on_parse_error(ctx, "unknown command");
+    if (strcmp(sym, "g") == 0)
+        return eatsym() && cmd_graph_y(ctx);
+    if (strcmp(sym, "let") == 0)
+        return eatsym() && cmd_let(ctx);
+    if ((strcmp(sym, "help") == 0) || (strcmp(sym, "h") == 0))
+        return eatsym() &&cmd_help(ctx);
+
     return false;
 }
 
@@ -200,36 +201,32 @@ bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
     advance_token(parseCtx);
 
     // scan the expression to see if it's something unusual
-    const bool isCommand = expr && expr[0] == ':';
     const bool isStatement = (strstr(expr, "->") != nullptr);
-    const bool isExpression = !isCommand && !isStatement;
 
+    bool shouldPrintResult = false;
     double result = 0.0;
 
     if (isStatement && parse_statement(parseCtx))
     {
         strcpy(resBuffer, "  ok.");
     }
-    else if (isCommand)
+    else if (try_parse_command(parseCtx))
     {
         // commands are expected to manage their own feedback
-        parse_command(parseCtx);
     }
-    else if (isExpression)
+    else
     {
         result = parse_expression(parseCtx);
+        shouldPrintResult = !parseCtx.Error;
     }
 
     if (!accept(parseCtx, Token::Eof))
         on_parse_error(parseCtx, "trailing nonsense");
     
-    if (parseCtx.Error)
-        return false;
-
-    if (isExpression)
+    if (shouldPrintResult)
         dtostr_human(result, resBuffer, resBufferLen);
 
-    return true;
+    return !parseCtx.Error;
 }
 
 

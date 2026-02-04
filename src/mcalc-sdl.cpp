@@ -188,6 +188,8 @@ void lcd_emit(char c)
 
 void lcd_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh)
 {
+    lcd_erase_cursor();
+
     // scroll up enough so there's at least imgh pixels free to draw on
     // nb. we're over-clearing the back buf at this point as we're about to blat over a chunk with the img
     int line_btm = gCursorY;
@@ -326,7 +328,7 @@ int main()
 
     SDL_FillRect(gBackBuffer, NULL, 0);
 
-    display_puts("molencalc v15     don't panic\n\n");
+    display_puts(MCALC_WELCOME);
     display_puts(">");
 
     SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
