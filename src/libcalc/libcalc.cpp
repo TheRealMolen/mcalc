@@ -1,5 +1,6 @@
 #include "libcalc.h"
 
+#include "cmd.h"
 #include "expr.h"
 #include "funcs.h"
 #include "parser.h"
@@ -8,6 +9,18 @@
 
 #include <cstdio>
 #include <cstring>
+
+//-------------------------------------------------------------------------------------------------
+
+calc_puts_func calc_puts_fn;
+
+void calc_puts(const char* str)
+{
+    if (calc_puts_fn)
+    {
+        calc_puts_fn(str);
+    }
+}
 
 //-------------------------------------------------------------------------------------------------
 
@@ -148,45 +161,37 @@ bool cmd_let(ParseCtx& ctx)
 
 //-------------------------------------------------------------------------------------------------
 
-bool cmd_help(ParseCtx& ctx)
-{
-    const char* helpText =
-R"(
-g fn [lo<x<hi] [lo<y<hi]
-   graph of y=f(x)
-
-let x=expr
-   set named val
-)";
-
-    if (strlen(helpText) < size_t(ctx.ResBufferLen))
-        strcpy(ctx.ResBuffer, helpText);
-    else
-        strcpy(ctx.ResBuffer, "error: too much help for buf");
-
-    return true;
-}
-
-//-------------------------------------------------------------------------------------------------
-
 bool try_parse_command(ParseCtx& ctx)
 {
     if (!peek(ctx, Token::Symbol))
         return false;
 
-    const char* sym = ctx.TokenSymbol;
+    const CommandDef* cmd = lookup_command(ctx.TokenSymbol);
+    if (!cmd)
+        return false;
 
-    auto eatsym = [&ctx]() -> bool
-    { return expect(ctx, Token::Symbol); };
+    // eat the command name symbol
+    expect(ctx, Token::Symbol);
 
-    if (strcmp(sym, "g") == 0)
-        return eatsym() && cmd_graph_y(ctx);
-    if (strcmp(sym, "let") == 0)
-        return eatsym() && cmd_let(ctx);
-    if ((strcmp(sym, "help") == 0) || (strcmp(sym, "h") == 0))
-        return eatsym() &&cmd_help(ctx);
+    if (cmd->Func)
+        return cmd->Func(ctx.InBuffer + ctx.CurrIx);
+    if (cmd->PFunc)
+        return cmd->PFunc(ctx);
 
+    on_parse_error(ctx, "corrupt command");
     return false;
+}
+
+//-------------------------------------------------------------------------------------------------
+
+void calc_init(calc_puts_func puts_func)
+{
+    calc_puts_fn = puts_func;
+
+    init_commands();
+
+    register_calc_cmd(cmd_graph_y, "g", "g fn [lo<x<hi] [, lo<y<hi]", "graph of y=fn(x)");
+    register_calc_cmd(cmd_let, "let", "let var=expr", "set <var> to <expr>");
 }
 
 //-------------------------------------------------------------------------------------------------

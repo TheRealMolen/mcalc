@@ -8,6 +8,8 @@
 SDL_Window* gWindow = nullptr;
 SDL_Surface* gBackBuffer = nullptr;
 
+bool gWantsQuit = false;
+
 
 //----------------------------------------------------------------------------------------
 // "lcd" driver
@@ -50,6 +52,12 @@ void cleanup_lcd()
         SDL_FreeSurface(gCharSurface);
         gCharSurface = nullptr;
     }
+}
+
+
+void lcd_set_font(const Font* font)
+{
+    gFont = font;
 }
 
 
@@ -298,6 +306,30 @@ Uint32 cursor_timer_func(Uint32 interval, void*)
 }
 
 
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+
+static bool cmd_bye(const char*)
+{
+    gWantsQuit = true;
+    return true;
+}
+
+static bool cmd_big(const char*)
+{
+    lcd_set_font(&font_10x16);
+    return true;
+}
+
+static bool cmd_small(const char*)
+{
+    lcd_set_font(&font_5x10);
+    return true;
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+
 int main()
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
@@ -328,6 +360,11 @@ int main()
 
     SDL_FillRect(gBackBuffer, NULL, 0);
 
+    calc_init(display_puts);
+    register_calc_cmd(cmd_big, "big", "", "switches to big text");
+    register_calc_cmd(cmd_small, "small", "", "switches to small text");
+    register_calc_cmd(cmd_bye, "bye", "", "closes the calc");
+
     display_puts(MCALC_WELCOME);
     display_puts(">");
 
@@ -346,8 +383,7 @@ int main()
     }
 #endif
 
-    bool wantsQuit = false;
-    while (!wantsQuit)
+    while (!gWantsQuit)
     {
         SDL_Event evt;
         while (SDL_PollEvent(&evt))
@@ -355,7 +391,7 @@ int main()
             switch (evt.type)
             {
             case SDL_QUIT:
-                wantsQuit = true;
+                gWantsQuit = true;
                 break;
 
             case SDL_TEXTINPUT:
