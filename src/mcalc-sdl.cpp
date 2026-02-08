@@ -153,8 +153,6 @@ void lcd_scroll_up(uint32_t distance)
         gCursorY -= distance;
     else
         gCursorY = 0;
-
-    lcd_draw_cursor();
 }
 
 void lcd_next_line()
@@ -166,6 +164,22 @@ void lcd_next_line()
         lcd_scroll_up(glyphHeight);
 }
 
+void lcd_next_tab()
+{
+    const int tabwidth = 6 * gFont->Width;
+    gCursorX += tabwidth + gFont->Width - 1;
+    if (gCursorX >= (WIDTH - tabwidth))
+    {
+        gCursorX = 0;
+        gCurrColIx = 0;
+        lcd_next_line();
+    }
+    else
+    {
+        gCursorX -= (gCursorX % tabwidth);
+    }
+}
+
 void lcd_emit(char c)
 {
     lcd_erase_cursor();
@@ -174,6 +188,10 @@ void lcd_emit(char c)
     {
     case SDLK_BACKSPACE:
         lcd_backspace();
+        break;
+
+    case '\t':
+        lcd_next_tab();
         break;
 
     case SDLK_RETURN:
@@ -190,8 +208,6 @@ void lcd_emit(char c)
             lcd_inc_column(advance);
         }
     }
-
-    lcd_draw_cursor();
 }
 
 void lcd_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh)
