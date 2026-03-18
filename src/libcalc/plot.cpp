@@ -118,7 +118,7 @@ bool draw_plot(const char* func_name, const PlotAxis* xAxis, const PlotAxis* yAx
     const int yZeroScr = int(xAx.ToScreenClamped(0));
     plot_vline_fast(yZeroScr, yAx.LoI, yAx.HiI, axisCol);
     
-    double lastY;
+    double lastY = eval_user_func(func, xAx.LoI, ctx);
     int lastYi = -1;
 
     for (int xi=xAx.LoI; xi<=xAx.HiI; ++xi)

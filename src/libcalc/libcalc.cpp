@@ -186,20 +186,22 @@ bool try_parse_command(ParseCtx& ctx)
 extern SDL_Surface* gBackBuffer;
 extern bool handle_input();
 extern void render();
+constexpr static double pi = 3.14159265358979323846264338327950288419716939937510;
 
 struct System
 {
     double x = 0;
     double v = 1;
     double z = 0;
-    const double damp = 0.05;
-    const double omega = 0.7;
-    constexpr static double pi = 3.14159265358979323846264338327950288419716939937510;
+    static constexpr double damp = 0.05;
+    static constexpr double omega = 0.7;
 
     void next(double dt)
     {
         z += dt * omega;
-        v += dt * ((-damp * v * dt) - sin(x) + sin(z));
+        z = fmod(z, pi*2);
+
+        v += dt * ((-damp * v) - sin(x) + sin(z));
         x += dt * v;
 
         x = fmod(x, pi*2);
@@ -231,6 +233,11 @@ void darken(SDL_Surface* surf)
     uint16_t* pixEnd = pix + (stride * surf->h);
     for (uint16_t* p = pix; p != pixEnd; ++p)
         *p = darken(*p);
+}
+
+float lerp(float a, float b, float t)
+{
+    return a + (b-a)*t;
 }
 
 
@@ -270,9 +277,42 @@ bool cmd_chaos([[maybe_unused]] ParseCtx& ctx)
 
     System s;
 
-    double minx=100, maxx=-100;
-    double miny=100, maxy=-100;
+#if 1
+    double step = 0.001;
+    constexpr double slice = pi/2;
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        for (int i = 0; i < 5000000; ++i)
+        {
+            System o = s;
 
+            s.next(step);
+
+            if (o.z < slice && s.z >= slice)
+            {
+                o.next(slice - o.z);
+
+                const double x = o.x;
+                const double y = o.v;
+
+                const double xi = int(xAx.ToScreen(x));
+                const double yi = int(yAx.ToScreen(y));
+
+                safePlot(xi, yi, lineCol);
+            }
+
+        }
+        SDL_BlitSurface(surf, nullptr, gBackBuffer, nullptr);
+        render();
+
+        if ((frame & 3) == 0)
+            darken(surf);
+
+        if (!handle_input())
+            break;
+    }
+
+#else
     double step = 0.00001;
     double t = 0;
     for (int frame = 0; frame < 1000; ++frame)
@@ -282,11 +322,6 @@ bool cmd_chaos([[maybe_unused]] ParseCtx& ctx)
             s.next(step);
             const double x = s.x;
             const double y = s.v;
-
-            minx = x < minx ? x : minx;
-            maxx = x > maxx ? x : maxx;
-            miny = y < miny ? y : miny;
-            maxy = y > maxy ? y : maxy;
 
             const double xi = int(xAx.ToScreen(x));
             const double yi = int(yAx.ToScreen(y));
@@ -301,13 +336,9 @@ bool cmd_chaos([[maybe_unused]] ParseCtx& ctx)
         if (!handle_input())
             break;
     }
+#endif
 
     SDL_FreeSurface(surf);
-
-
-    std::cout << "x range: " << minx << " : " << maxx << "\n";
-    std::cout << "y range: " << miny << " : " << maxy << "\n";
-    std::cout.flush();
 
     return true;
 }
