@@ -8,7 +8,9 @@
 #include "plot.h"
 #include "symbols.h"
 
+#include <cmath>
 #include <cstring>
+#include <iostream>
 
 //-------------------------------------------------------------------------------------------------
 
@@ -178,6 +180,138 @@ bool try_parse_command(ParseCtx& ctx)
     return false;
 }
 
+
+//-------------------------------------------------------------------------------------------------
+#include <SDL.h>
+extern SDL_Surface* gBackBuffer;
+extern bool handle_input();
+extern void render();
+
+struct System
+{
+    double x = 0;
+    double v = 1;
+    double z = 0;
+    const double damp = 0.05;
+    const double omega = 0.7;
+    constexpr static double pi = 3.14159265358979323846264338327950288419716939937510;
+
+    void next(double dt)
+    {
+        z += dt * omega;
+        v += dt * ((-damp * v * dt) - sin(x) + sin(z));
+        x += dt * v;
+
+        x = fmod(x, pi*2);
+        if (x <= -pi)
+            x += pi*2;
+        if (x > pi)
+            x -= pi*2;
+    }
+};
+
+
+uint16_t darken(uint16_t c)
+{
+    uint16_t r = c >> 11;
+    uint16_t g = (c >> 5) & 0x3f;
+    uint16_t b = c & 0x1f;
+
+    r = (r * 15) / 16;
+    g = (g * 29) / 32;
+    b = (b * 14) / 16;
+
+    return (r << 11) | (g << 5) | (b);
+}
+
+void darken(SDL_Surface* surf)
+{
+    uint16_t* pix = (uint16_t*)(surf->pixels);
+    int stride = surf->pitch / sizeof(uint16_t);
+    uint16_t* pixEnd = pix + (stride * surf->h);
+    for (uint16_t* p = pix; p != pixEnd; ++p)
+        *p = darken(*p);
+}
+
+
+bool cmd_chaos([[maybe_unused]] ParseCtx& ctx)
+{
+    constexpr int imgw = 320;
+    constexpr int imgh = 320;
+    SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, imgw, imgh, 16, SDL_PIXELFORMAT_RGB565);
+
+    constexpr int border = 4;
+    const uint16_t bgCol = 0x1862;
+    const uint16_t lineCol = 0xff0a;
+
+    PlotAxis xAxis { .Name = "x", .Lo = -3.5, .Hi = 3.5 };
+    PlotAxis yAxis { .Name = "y", .Lo = -4.5, .Hi = 4.5 };
+
+    const FastAxis xAx(xAxis, border, imgw - border - 1);
+    const FastAxis yAx(yAxis, imgw - border - 1, border);
+
+    // clear our plot pixels
+    uint16_t* pix = (uint16_t*)(surf->pixels);
+    int stride = surf->pitch / sizeof(uint16_t);
+    uint16_t* pixEnd = pix + (stride * surf->h);
+    for (uint16_t* p = pix; p != pixEnd; ++p)
+        *p = bgCol;
+
+    auto safePlot = [pix,stride](int x, int y, uint16_t col)
+    {
+        if (x < 0 || x >= stride)
+            return;
+        if (y < 0 || y >= imgh)
+            return;
+
+        pix[y * stride + x] = col;
+    };
+
+
+    System s;
+
+    double minx=100, maxx=-100;
+    double miny=100, maxy=-100;
+
+    double step = 0.00001;
+    double t = 0;
+    for (int frame = 0; frame < 1000; ++frame)
+    {
+        for (int i = 0; i < 1000000; ++i, t += step)
+        {
+            s.next(step);
+            const double x = s.x;
+            const double y = s.v;
+
+            minx = x < minx ? x : minx;
+            maxx = x > maxx ? x : maxx;
+            miny = y < miny ? y : miny;
+            maxy = y > maxy ? y : maxy;
+
+            const double xi = int(xAx.ToScreen(x));
+            const double yi = int(yAx.ToScreen(y));
+
+            safePlot(xi, yi, lineCol);
+        }
+    
+        SDL_BlitSurface(surf, nullptr, gBackBuffer, nullptr);
+        darken(surf);
+        render();
+
+        if (!handle_input())
+            break;
+    }
+
+    SDL_FreeSurface(surf);
+
+
+    std::cout << "x range: " << minx << " : " << maxx << "\n";
+    std::cout << "y range: " << miny << " : " << maxy << "\n";
+    std::cout.flush();
+
+    return true;
+}
+
 //-------------------------------------------------------------------------------------------------
 
 void calc_init(calc_puts_func puts_func)
@@ -187,6 +321,7 @@ void calc_init(calc_puts_func puts_func)
     init_commands();
 
     register_calc_cmd(cmd_graph_y, "g", "g fn [lo<x<hi] [, lo<y<hi]", "graph of y=fn(x)");
+    register_calc_cmd(cmd_chaos, "ch", "ch", "draw some chaos");
 }
 
 //-------------------------------------------------------------------------------------------------

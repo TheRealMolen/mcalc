@@ -346,6 +346,68 @@ static bool cmd_small(const char*)
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
+bool handle_input()
+{
+    SDL_Event evt;
+    while (SDL_PollEvent(&evt))
+    {
+        switch (evt.type)
+        {
+        case SDL_QUIT:
+            gWantsQuit = true;
+            break;
+
+        case SDL_TEXTINPUT:
+            //printf("textinput: char=%c\n", evt.text.text[0]);
+            handleInputChar(evt.text.text[0]);
+            break;
+
+        case SDL_KEYDOWN:
+            {
+                const int keycode = evt.key.keysym.sym;
+                const int scancode = evt.key.keysym.scancode;
+                switch (keycode)
+                {
+                case SDLK_BACKSPACE:
+                case SDLK_DELETE:
+                case SDLK_RETURN:
+                    if (handleInputChar(keycode) && (gReadBufIx > 0))
+                        eval_input();
+                    break;
+                }
+                switch (scancode)
+                {
+                case SDL_SCANCODE_KP_ENTER:
+                    if (handleInputChar(SDLK_RETURN) && (gReadBufIx > 0))
+                        eval_input();
+                    break;
+                }
+            //    printf("keydown: keycode=%d, scancode=%d\n",
+            //       evt.key.keysym.sym, evt.key.keysym.scancode);
+
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    return !gWantsQuit;
+}
+
+//-------------------------------------------------------------------------------------------------
+
+void render()
+{
+    SDL_Surface* screenSurface = SDL_GetWindowSurface(gWindow);
+    SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
+    SDL_UpdateWindowSurface(gWindow);
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+
 int main()
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
@@ -401,50 +463,7 @@ int main()
 
     while (!gWantsQuit)
     {
-        SDL_Event evt;
-        while (SDL_PollEvent(&evt))
-        {
-            switch (evt.type)
-            {
-            case SDL_QUIT:
-                gWantsQuit = true;
-                break;
-
-            case SDL_TEXTINPUT:
-                //printf("textinput: char=%c\n", evt.text.text[0]);
-                handleInputChar(evt.text.text[0]);
-                break;
-
-            case SDL_KEYDOWN:
-                {
-                    const int keycode = evt.key.keysym.sym;
-                    const int scancode = evt.key.keysym.scancode;
-                    switch (keycode)
-                    {
-                    case SDLK_BACKSPACE:
-                    case SDLK_DELETE:
-                    case SDLK_RETURN:
-                        if (handleInputChar(keycode) && (gReadBufIx > 0))
-                            eval_input();
-                        break;
-                    }
-                    switch (scancode)
-                    {
-                    case SDL_SCANCODE_KP_ENTER:
-                        if (handleInputChar(SDLK_RETURN) && (gReadBufIx > 0))
-                            eval_input();
-                        break;
-                    }
-                //    printf("keydown: keycode=%d, scancode=%d\n",
-                //       evt.key.keysym.sym, evt.key.keysym.scancode);
-
-                }
-                break;
-
-            default:
-                break;
-            }
-        }
+        handle_input();
 
         if (gToggleCursor)
         {
@@ -456,9 +475,7 @@ int main()
                 lcd_erase_cursor();
         }
 
-        SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
-        SDL_UpdateWindowSurface(gWindow);
-
+        render();
     }
 
     SDL_RemoveTimer(cursorTimer);
