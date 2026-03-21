@@ -188,25 +188,34 @@ extern bool handle_input();
 extern void render();
 constexpr static double pi = 3.14159265358979323846264338327950288419716939937510;
 
-static const uint16_t bgCol = 0x1862;
-static const uint16_t lineCol = 0xff0a;
+static constexpr uint16_t COL_AMBER = 0xff0a;
+static constexpr uint16_t COL_AQUA = 0xb7f5;
+
+static constexpr uint16_t bgCol = 0x1862;
+static constexpr uint16_t lineCol = COL_AMBER;
 
 
 struct DampedPendulumSystem
 {
-    double x = 0;
-    double v = 1;
-    double z = 0;
-    static constexpr double damp = 0.05;
-    static constexpr double omega = 0.7;
+    using real_t = float;
 
-    double getX() const { return x; }
-    double getY() const { return v; }
-    double getPhi() const { return z; }
+    real_t x = 0;
+    real_t v = 1;
+    real_t z = 0;
+    
+    real_t damp = 0.05;
+    real_t omega = 0.8;
+
+    void setParamA(double val)  { damp = real_t(val); }
+    void setParamB(double val)  { omega = real_t(val); }
+
+    real_t getX() const { return x; }
+    real_t getY() const { return v; }
+    real_t getPhi() const { return z; }
 
     void next(double dt)
     {
-        z += dt * omega;
+        z += real_t(dt) * omega;
         z = fmod(z, pi*2);
 
         v += dt * ((-damp * v) - sin(x) + sin(z));
@@ -221,6 +230,7 @@ struct DampedPendulumSystem
 };
 
 
+// warmly darken an RGB565 colour by ~10%
 uint16_t darken(uint16_t c)
 {
     uint16_t r = c >> 11;
@@ -310,6 +320,7 @@ public:
     void blit(SDL_Surface* dst)
     {
         SDL_BlitSurface(mSurf, nullptr, dst, nullptr);
+        render();
     }
 
     inline int x(double realX) const { return int(mX.ToScreen(realX)); }
@@ -326,11 +337,15 @@ private:
 
 
 template<typename SystemType>
-bool cmd_anim_diff([[maybe_unused]] ParseCtx& ctx)
+bool cmd_anim_diff(ParseCtx& ctx)
 {
     AnimRenderer rndr(-3.5, 3.5, -4.5, 4.5, bgCol);
 
     SystemType s;
+    if (!peek(ctx, Token::Eof))
+        s.setParamA(parse_expression(ctx));
+    if (!peek(ctx, Token::Eof))
+        s.setParamB(parse_expression(ctx));
 
     double step = 0.00001;
     double t = 0;
@@ -351,7 +366,6 @@ bool cmd_anim_diff([[maybe_unused]] ParseCtx& ctx)
     
         rndr.blit(gBackBuffer);
         rndr.darken();
-        render();
 
         if (!handle_input())
             break;
@@ -367,6 +381,10 @@ bool cmd_anim_poincare([[maybe_unused]] ParseCtx& ctx)
     AnimRenderer rndr(-3.5, 3.5, -4.5, 4.5, bgCol);
 
     SystemType s;
+    if (!peek(ctx, Token::Eof))
+        s.setParamA(parse_expression(ctx));
+    if (!peek(ctx, Token::Eof))
+        s.setParamB(parse_expression(ctx));
 
     double step = 0.001;
     constexpr double slice = pi/2;
@@ -390,11 +408,9 @@ bool cmd_anim_poincare([[maybe_unused]] ParseCtx& ctx)
 
                 rndr.safePlot(xi, yi, lineCol);
             }
-
         }
 
         rndr.blit(gBackBuffer);
-        render();
 
         if ((frame & 3) == 0)
             rndr.darken();
