@@ -188,13 +188,21 @@ extern bool handle_input();
 extern void render();
 constexpr static double pi = 3.14159265358979323846264338327950288419716939937510;
 
-struct System
+static const uint16_t bgCol = 0x1862;
+static const uint16_t lineCol = 0xff0a;
+
+
+struct DampedPendulumSystem
 {
     double x = 0;
     double v = 1;
     double z = 0;
     static constexpr double damp = 0.05;
     static constexpr double omega = 0.7;
+
+    double getX() const { return x; }
+    double getY() const { return v; }
+    double getPhi() const { return z; }
 
     void next(double dt)
     {
@@ -241,104 +249,159 @@ float lerp(float a, float b, float t)
 }
 
 
-bool cmd_chaos([[maybe_unused]] ParseCtx& ctx)
+class AnimRenderer
 {
-    constexpr int imgw = 320;
-    constexpr int imgh = 320;
-    SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, imgw, imgh, 16, SDL_PIXELFORMAT_RGB565);
+    static constexpr int IMGW = 320;
+    static constexpr int IMGH = 320;
 
-    constexpr int border = 4;
-    const uint16_t bgCol = 0x1862;
-    const uint16_t lineCol = 0xff0a;
+    static constexpr int BORDER = 4;
 
-    PlotAxis xAxis { .Name = "x", .Lo = -3.5, .Hi = 3.5 };
-    PlotAxis yAxis { .Name = "y", .Lo = -4.5, .Hi = 4.5 };
+    AnimRenderer() = delete;
+    AnimRenderer(const AnimRenderer&) = delete;
+    AnimRenderer(AnimRenderer&&) = delete;
+    AnimRenderer& operator=(const AnimRenderer&) = delete;
+    AnimRenderer& operator=(AnimRenderer&&) = delete;
 
-    const FastAxis xAx(xAxis, border, imgw - border - 1);
-    const FastAxis yAx(yAxis, imgw - border - 1, border);
-
-    // clear our plot pixels
-    uint16_t* pix = (uint16_t*)(surf->pixels);
-    int stride = surf->pitch / sizeof(uint16_t);
-    uint16_t* pixEnd = pix + (stride * surf->h);
-    for (uint16_t* p = pix; p != pixEnd; ++p)
-        *p = bgCol;
-
-    auto safePlot = [pix,stride](int x, int y, uint16_t col)
+public:
+    AnimRenderer(float minX, float maxX, float minY, float maxY, uint16_t bgCol)
+        : mAxisX{ .Name = "x", .Lo = minX, .Hi = maxX }
+        , mAxisY{ .Name = "y", .Lo = minY, .Hi = maxY }
+        , mX( mAxisX, BORDER, IMGW - BORDER - 1)
+        , mY( mAxisY, IMGW - BORDER - 1, BORDER)
     {
-        if (x < 0 || x >= stride)
-            return;
-        if (y < 0 || y >= imgh)
+        mSurf = SDL_CreateRGBSurfaceWithFormat(0, IMGW, IMGH, 16, SDL_PIXELFORMAT_RGB565);
+        if (!mSurf)
             return;
 
-        pix[y * stride + x] = col;
-    };
+        mPix = (uint16_t*)(mSurf->pixels);
+        mStride = mSurf->pitch / sizeof(uint16_t);
 
-
-    System s;
-
-#if 1
-    double step = 0.001;
-    constexpr double slice = pi/2;
-    for (int frame = 0; frame < 1000; ++frame)
-    {
-        for (int i = 0; i < 5000000; ++i)
-        {
-            System o = s;
-
-            s.next(step);
-
-            if (o.z < slice && s.z >= slice)
-            {
-                o.next(slice - o.z);
-
-                const double x = o.x;
-                const double y = o.v;
-
-                const double xi = int(xAx.ToScreen(x));
-                const double yi = int(yAx.ToScreen(y));
-
-                safePlot(xi, yi, lineCol);
-            }
-
-        }
-        SDL_BlitSurface(surf, nullptr, gBackBuffer, nullptr);
-        render();
-
-        if ((frame & 3) == 0)
-            darken(surf);
-
-        if (!handle_input())
-            break;
+        fill(bgCol);
     }
 
-#else
+    ~AnimRenderer()
+    {
+        SDL_FreeSurface(mSurf);
+        mSurf = nullptr;
+    }
+
+    void safePlot(int x, int y, uint16_t col)
+    {
+        if (x < 0 || x >= mStride)
+            return;
+        if (y < 0 || y >= IMGH)
+            return;
+
+        mPix[y * mStride + x] = col;
+    };
+
+    void fill(uint16_t col)
+    {
+        uint16_t* pixEnd = mPix + (mStride * mSurf->h);
+        for (uint16_t* p = mPix; p != pixEnd; ++p)
+            *p = col;
+    }
+    
+    void darken()
+    {
+        ::darken(mSurf);
+    }
+
+    void blit(SDL_Surface* dst)
+    {
+        SDL_BlitSurface(mSurf, nullptr, dst, nullptr);
+    }
+
+    inline int x(double realX) const { return int(mX.ToScreen(realX)); }
+    inline int y(double realY) const { return int(mY.ToScreen(realY)); }
+
+private:
+    SDL_Surface* mSurf = nullptr;
+    const PlotAxis mAxisX, mAxisY;
+    const FastAxis mX, mY;
+    uint16_t* mPix = nullptr;
+    int mStride = IMGW;
+};
+
+
+
+template<typename SystemType>
+bool cmd_anim_diff([[maybe_unused]] ParseCtx& ctx)
+{
+    AnimRenderer rndr(-3.5, 3.5, -4.5, 4.5, bgCol);
+
+    SystemType s;
+
     double step = 0.00001;
     double t = 0;
-    for (int frame = 0; frame < 1000; ++frame)
+    for (;;)
     {
         for (int i = 0; i < 1000000; ++i, t += step)
         {
             s.next(step);
-            const double x = s.x;
-            const double y = s.v;
 
-            const double xi = int(xAx.ToScreen(x));
-            const double yi = int(yAx.ToScreen(y));
+            const double x = s.getX();
+            const double y = s.getY();
 
-            safePlot(xi, yi, lineCol);
+            const double xi = rndr.x(x);
+            const double yi = rndr.y(y);
+
+            rndr.safePlot(xi, yi, lineCol);
         }
     
-        SDL_BlitSurface(surf, nullptr, gBackBuffer, nullptr);
-        darken(surf);
+        rndr.blit(gBackBuffer);
+        rndr.darken();
         render();
 
         if (!handle_input())
             break;
     }
-#endif
 
-    SDL_FreeSurface(surf);
+    return true;
+}
+
+
+template<typename SystemType>
+bool cmd_anim_poincare([[maybe_unused]] ParseCtx& ctx)
+{
+    AnimRenderer rndr(-3.5, 3.5, -4.5, 4.5, bgCol);
+
+    SystemType s;
+
+    double step = 0.001;
+    constexpr double slice = pi/2;
+    for (int frame = 0; /**/; ++frame)
+    {
+        for (int i = 0; i < 5000000; ++i)
+        {
+            SystemType o = s;
+
+            s.next(step);
+
+            if (o.getPhi() < slice && s.getPhi() >= slice)
+            {
+                o.next(slice - o.getPhi());
+
+                const double x = o.getX();
+                const double y = o.getY();
+
+                const double xi = rndr.x(x);
+                const double yi = rndr.y(y);
+
+                rndr.safePlot(xi, yi, lineCol);
+            }
+
+        }
+
+        rndr.blit(gBackBuffer);
+        render();
+
+        if ((frame & 3) == 0)
+            rndr.darken();
+
+        if (!handle_input())
+            break;
+    }
 
     return true;
 }
@@ -352,7 +415,8 @@ void calc_init(calc_puts_func puts_func)
     init_commands();
 
     register_calc_cmd(cmd_graph_y, "g", "g fn [lo<x<hi] [, lo<y<hi]", "graph of y=fn(x)");
-    register_calc_cmd(cmd_chaos, "ch", "ch", "draw some chaos");
+    register_calc_cmd(cmd_anim_diff<DampedPendulumSystem>, "d", "d", "draw an animated diff eqn");
+    register_calc_cmd(cmd_anim_poincare<DampedPendulumSystem>, "p", "p", "draw an animated poincare...\n slice of a diff eqn");
 }
 
 //-------------------------------------------------------------------------------------------------

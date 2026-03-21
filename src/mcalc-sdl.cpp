@@ -381,6 +381,9 @@ bool handle_input()
                     if (handleInputChar(SDLK_RETURN) && (gReadBufIx > 0))
                         eval_input();
                     break;
+
+                case SDL_SCANCODE_ESCAPE:
+                    return false;
                 }
             //    printf("keydown: keycode=%d, scancode=%d\n",
             //       evt.key.keysym.sym, evt.key.keysym.scancode);
