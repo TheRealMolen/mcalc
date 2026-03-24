@@ -12,8 +12,6 @@
 
 struct DampedPendulumSystem
 {
-    using real_t = float;
-
     real_t x = 0;
     real_t v = 1;
     real_t z = 0;
@@ -28,13 +26,14 @@ struct DampedPendulumSystem
     real_t getY() const { return v; }
     real_t getPhi() const { return z; }
 
-    void next(double dt)
+    void next(real_t dt)
     {
-        z += real_t(dt) * omega;
-        v += dt * ((-damp * v) - sin(x) + sin(z));
+        z += dt * omega;
+        v += dt * ((-damp * v) - sinf(x) + sinf(z));
         x += dt * v;
 
-        z = clampRads(z);
+        if (z > pi_real*2)
+            z -= pi_real*2;
         x = clampRadsSym(x);
     }
 };
@@ -42,8 +41,6 @@ struct DampedPendulumSystem
 
 struct ForcedVdPolOscillator
 {
-    using real_t = float;
-
     real_t x = 1;
     real_t v = 0.1;
     real_t z = 0;
@@ -58,13 +55,14 @@ struct ForcedVdPolOscillator
     real_t getY() const { return v; }
     real_t getPhi() const { return z; }
 
-    void next(double dt)
+    void next(real_t dt)
     {
-        z += real_t(dt) * omega;
-        v += dt * ((force * sin(z)) - x - ((x*x - 1) * v));
+        z += dt * omega;
+        v += dt * ((force * sinf(z)) - x - ((x*x - 1) * v));
         x += dt * v;
 
-        z = clampRads(z);
+        if (z > pi_real*2)
+            z -= pi_real*2;
         x = clampRadsSym(x);
     }
 };
@@ -72,8 +70,6 @@ struct ForcedVdPolOscillator
 
 struct SignumSystem
 {
-    using real_t = float;
-
     real_t x = 1;
     real_t v = 0.1;
     real_t z = 0;
@@ -85,14 +81,15 @@ struct SignumSystem
     real_t getY() const { return v; }
     real_t getPhi() const { return z; }
 
-    void next(double dt)
+    void next(real_t dt)
     {
-        z += real_t(dt);
-        v += dt * (sin(z) - signum(x));
+        z += dt;
+        v += dt * (sinf(z) - signum(x));
 //        v += dt * (sin(z) - tanh(x*5000));
         x += dt * v;
 
-        z = clampRads(z);
+        if (z > pi_real*2)
+            z -= pi_real*2;
     }
 };
 
@@ -110,19 +107,18 @@ bool cmd_anim_diff(ParseCtx& ctx)
     if (!peek(ctx, Token::Eof))
         s.setParamB(parse_expression(ctx));
 
-    double step = 0.00001;
-    double t = 0;
+    real_t step = 0.001;
     for (;;)
     {
-        for (int i = 0; i < 1000000; ++i, t += step)
+        for (int i = 0; i < 10000; ++i)
         {
             s.next(step);
 
-            const double x = s.getX();
-            const double y = s.getY();
+            const real_t x = s.getX();
+            const real_t y = s.getY();
 
-            const double xi = rndr.x(x);
-            const double yi = rndr.y(y);
+            const real_t xi = rndr.x(x);
+            const real_t yi = rndr.y(y);
 
             rndr.safePlot(xi, yi);
         }
@@ -150,33 +146,37 @@ bool cmd_anim_poincare(ParseCtx& ctx)
     if (!peek(ctx, Token::Eof))
         s.setParamB(parse_expression(ctx));
 
-    double step = 0.001;
-    constexpr double slice = pi/2;
+    real_t step = 0.01;
+    constexpr real_t slice = pi_real/2;
+    bool phiBelowSlice = s.getPhi() < slice;
+
     for (int frame = 0; /**/; ++frame)
     {
-        for (int i = 0; i < 5000000; ++i)
+        for (int i = 0; i < 250000; ++i)
         {
-            SystemType o = s;
-
             s.next(step);
 
-            if (o.getPhi() < slice && s.getPhi() >= slice)
+            if (phiBelowSlice && s.getPhi() >= slice)
             {
-                o.next(slice - o.getPhi());
+                const real_t x = s.getX();
+                const real_t y = s.getY();
 
-                const double x = o.getX();
-                const double y = o.getY();
-
-                const double xi = rndr.x(x);
-                const double yi = rndr.y(y);
+                const real_t xi = rndr.x(x);
+                const real_t yi = rndr.y(y);
 
                 rndr.safePlot(xi, yi);
+
+                phiBelowSlice = false;
+            }
+            else if (!phiBelowSlice)
+            {
+                phiBelowSlice = (s.getPhi() < slice);
             }
         }
 
         rndr.blit();
 
-        if ((frame & 3) == 0)
+        if ((frame & 7) == 0)
             rndr.darken();
 
         if (rndr.check_for_break())
@@ -190,12 +190,12 @@ bool cmd_anim_poincare(ParseCtx& ctx)
 
 void register_chaos_commands()
 {
-    register_calc_cmd(cmd_anim_diff<DampedPendulumSystem>, "da", "d", "draw an animated diff eqn");
-    register_calc_cmd(cmd_anim_poincare<DampedPendulumSystem>, "pa", "p", "draw an animated poincare...\n slice of a diff eqn");
-    //register_calc_cmd(cmd_anim_diff<ForcedVdPolOscillator>, "d", "d", "draw an animated diff eqn");
-    //register_calc_cmd(cmd_anim_poincare<ForcedVdPolOscillator>, "p", "p", "draw an animated poincare...\n slice of a diff eqn");
-    register_calc_cmd(cmd_anim_diff<SignumSystem>, "d", "d", "draw an animated diff eqn");
-    register_calc_cmd(cmd_anim_poincare<SignumSystem>, "p", "p", "draw an animated poincare...\n slice of a diff eqn");
+    register_calc_cmd(cmd_anim_diff<DampedPendulumSystem>, "dd", "d", "draw an animated diff eqn");
+    register_calc_cmd(cmd_anim_poincare<DampedPendulumSystem>, "pd", "p", "draw an animated poincare...\n slice of a diff eqn");
+    register_calc_cmd(cmd_anim_diff<ForcedVdPolOscillator>, "df", "d", "draw an animated diff eqn");
+    register_calc_cmd(cmd_anim_poincare<ForcedVdPolOscillator>, "pf", "p", "draw an animated poincare...\n slice of a diff eqn");
+    register_calc_cmd(cmd_anim_diff<SignumSystem>, "ds", "d", "draw an animated diff eqn");
+    register_calc_cmd(cmd_anim_poincare<SignumSystem>, "ps", "p", "draw an animated poincare...\n slice of a diff eqn");
 }
 
 //-------------------------------------------------------------------------------------------------

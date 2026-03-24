@@ -13,7 +13,13 @@ double sinc(double v);
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
+using real_t = float;
+
 constexpr static double pi = 3.14159265358979323846264338327950288419716939937510;
+
+static constexpr real_t pi_real = real_t(pi);
+
+//-------------------------------------------------------------------------------------------------
 
 inline float lerp(float a, float b, float t)
 {
@@ -30,25 +36,35 @@ inline float signum(float x)
 }
 
 // return r in range [0,2pi)
-inline float clampRads(float r)
+inline real_t clampRads(real_t r)
 {
-    r = fmod(r, pi*2);
+    r = fmodf(r, pi_real*2);
     if (r < 0)
-        r += pi*2;
+        r += pi_real*2;
 
     return r;
 }
 
 // return r in range (-pi,pi]
-inline float clampRadsSym(float r)
+inline real_t clampRadsSym(real_t r)
 {
-    r = fmod(r, pi*2);
-    if (r <= -pi)
-        r += pi*2;
-    if (r > pi)
-        r -= pi*2;
+    /* og code, tweaked to remove a funciton call in an inner loop
+    r = fmodf(r, pi_real*2);
+    if (r <= -pi_real)
+        r += pi_real*2;
+    if (r > pi_real)
+        r -= pi_real*2;
+        */
 
-    return r;
+    const real_t scaled = r * (1 / (pi_real*2));
+    real_t frac = scaled - int(scaled);
+
+    if (frac <= -0.5)
+        frac += 1;
+    else if (frac > 0.5)
+        frac -= 1;
+
+    return frac * pi_real * 2;
 }
 
 //-------------------------------------------------------------------------------------------------

@@ -97,10 +97,12 @@ public:
 private:
     TinyScopeFrameBuf mFb;
 
+#if MLN_TARGET_PC
     SDL_Surface* mSurf = nullptr;
+#endif
+
     const PlotAxis mAxisX, mAxisY;
     const FastAxis mX, mY;
-    uint16_t* mPix = nullptr;
 };
 
 //-------------------------------------------------------------------------------------------------

@@ -1,10 +1,19 @@
 #include "animrender.h"
 
+#include <cstring>
+
 #if MLN_TARGET_PC
+
 // defined in the main SDL wrapper
 extern SDL_Surface* gBackBuffer;
 extern bool handle_input();
 extern void render();
+
+#elif MLN_TARGET_PICO
+
+#include "drivers/keyboard.h"
+#include "drivers/lcd.h"
+
 #endif
 
 //-------------------------------------------------------------------------------------------------
@@ -121,15 +130,32 @@ AnimRenderer::AnimRenderer(float minX, float maxX, float minY, float maxY)
     , mX( mAxisX, 0, IMGW - 1)
     , mY( mAxisY, IMGW - 1, 0)
 {
+#if MLN_TARGET_PC
     mSurf = SDL_CreateRGBSurfaceWithFormat(0, IMGW, IMGH, 16, SDL_PIXELFORMAT_RGB565);
     if (!mSurf)
         return;
+
+    SDL_FillRect(gBackBuffer, nullptr, 0);
+
+#elif MLN_TARGET_PICO
+
+    lcd_scroll_clear();
+    lcd_enable_cursor(false);
+
+#endif
 }
 
 AnimRenderer::~AnimRenderer()
 {
+#if MLN_TARGET_PC
     SDL_FreeSurface(mSurf);
     mSurf = nullptr;
+
+#elif MLN_TARGET_PICO
+
+    lcd_enable_cursor(true);
+
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -141,6 +167,8 @@ void AnimRenderer::darken()
 
 void AnimRenderer::blit() const
 {
+#if MLN_TARGET_PC
+
     SDL_LockSurface(mSurf);
 
     const int stride = mSurf->pitch / sizeof(uint16_t);
@@ -155,11 +183,34 @@ void AnimRenderer::blit() const
     SDL_Rect dstRect { TinyScopeFrameBuf::BORDER, TinyScopeFrameBuf::BORDER, 0, 0 };
     SDL_BlitSurface(mSurf, nullptr, gBackBuffer, &dstRect);
     render();
+
+#elif MLN_TARGET_PICO
+
+    // expand row-by-row to local array and then blit each of those in turn
+    uint16_t row[IMGW];
+    const int x = TinyScopeFrameBuf::BORDER;
+    int y = TinyScopeFrameBuf::BORDER;
+    for (int i=0; i<IMGH; ++i, ++y)
+    {
+        mFb.getRow(i, row);
+
+        lcd_blit(row, x, y, IMGW, 1);
+    }
+
+#endif
 }
 
 bool AnimRenderer::check_for_break()
 {
+#if MLN_TARGET_PC
+
     return handle_input() == false;
+
+#elif MLN_TARGET_PICO
+
+    return keyboard_key_available();
+
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
