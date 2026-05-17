@@ -5,7 +5,7 @@
 #if MLN_TARGET_PC
 
 // defined in the main SDL wrapper
-extern SDL_Surface* gBackBuffer;
+extern SDL_Window* gWindow;
 extern bool handle_input();
 extern void render();
 
@@ -135,8 +135,6 @@ AnimRenderer::AnimRenderer(float minX, float maxX, float minY, float maxY)
     if (!mSurf)
         return;
 
-    SDL_FillRect(gBackBuffer, nullptr, 0);
-
 #elif MLN_TARGET_PICO
 
     lcd_scroll_clear();
@@ -167,7 +165,7 @@ void AnimRenderer::darken()
 
 void AnimRenderer::blit() const
 {
-#if MLN_TARGET_PC
+#if 0 && defined(MLN_TARGET_PC)
 
     SDL_LockSurface(mSurf);
 
@@ -184,7 +182,7 @@ void AnimRenderer::blit() const
     SDL_BlitSurface(mSurf, nullptr, gBackBuffer, &dstRect);
     render();
 
-#elif MLN_TARGET_PICO
+#elif defined(MLN_TARGET_PICO)
 
     // expand row-by-row to local array and then blit each of those in turn
     uint16_t row[IMGW];

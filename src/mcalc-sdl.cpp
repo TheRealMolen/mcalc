@@ -215,144 +215,23 @@ void lcd_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh)
 }
 
 
-void display_puts(const char* s)
-{
-    if (!s)
-        return;
-
-    while (*s)
-    {
-        lcd_emit(*s);
-        ++s;
-    }
-}
-
-
-
-
-constexpr int kReadBufSize = 256;
-int16_t gReadBufIx = 0;     // the index of the cursor within the readbuf
-int16_t gReadBufEndIx = 0;  // the index of the final character in the readbuf
-char gReadBuf[kReadBufSize] = {0};
-
-// the line history buffer is in two parts:
-//  1. a rolling buffer of chars excluding newlines and terminators; just a big block of chars
-//  2. ringbuffer of indices into the above + lengths
-constexpr int kHistoryBufSize = 2 * 1024;
-constexpr int kHistoryMaxLines = 32;
-
-struct HistoryLine
-{
-    uint16_t StartIx = 0;
-    uint16_t Length = 0;
-    bool     Valid = false;
-};
-
-char gHistoryBuf[kHistoryBufSize] = {0};
-int gNextHistoryWriteChar = 0;
-HistoryLine gHistoryLines[kHistoryMaxLines];
-int gCurrHistoryLine = 0;
-
-void input_init()
-{
-    for (HistoryLine& line : gHistoryLines)
-        line.Valid = false;
-}
-
-void input_enterChar(char c)
-{
-    if (gReadBufIx < gReadBufEndIx)
-    {
-        memmove(gReadBuf + gReadBufIx + 1, gReadBuf + gReadBufIx, gReadBufEndIx - gReadBufIx);
-    }
-
-    gReadBuf[gReadBufIx] = c;
-    ++gReadBufIx;
-    ++gReadBufEndIx;
-
-    lcd_emit(c);
-}
-
-void input_deletePrevChar()
-{
-    if (gReadBufIx > 0)
-    {
-        --gReadBufIx;
-        --gReadBufEndIx;
-        gReadBuf[gReadBufIx] = 0; // blank out whatever was there
-
-        // erase the last char on screen
-        display_puts("\b \b");
-    }
-}
-
-void input_moveCursorLeft()
-{
-    if (gReadBufIx > 0)
-
-}
-
-void input_moveCursorRight()
-{
-}
-
-
-
-inline bool input_hasData()
-{
-    return gReadBufEndIx > 0;
-}
-
 #endif
-
-
-// returns true if the input ended a command that should be processed
-bool handleInputChar(char c)
-{
-    if (c == '\r' || c == '\n')
-    {
-        lcd_emit(SDLK_RETURN);
-
-        // null-terminate and return executable
-        gReadBuf[gReadBufEndIx] = 0;
-        return true;
-    }
-
-    if (c == SDLK_BACKSPACE)
-    {
-        input_deletePrevChar();
-    }
-    else if (c == SDLK_DELETE)
-    {
-        input_moveCursorRight();
-        input_deletePrevChar();
-    }
-    else if ((gReadBufIx+1 < kReadBufSize) && (c >= 0x20) && (c < 0x7f))
-    {
-        input_enterChar(c);
-    }
-
-    return false;
-}
 
 
 void eval_input()
 {
     char resBuf[1024];
-    calc_eval(gReadBuf, resBuf, sizeof(resBuf));
-    display_puts(resBuf);
+
+    calc_eval(input_get_line(), resBuf, sizeof(resBuf));
+    text_emit_str(resBuf);
 
     if (const Plot* plot = get_plot())
     {
-        lcd_put_image(plot->Pixels, MC_PLOT_WIDTH, MC_PLOT_HEIGHT);
+        text_put_image(plot->Pixels, MC_PLOT_WIDTH, MC_PLOT_HEIGHT);
         reset_plot();
     }
 
-    display_puts("\n>");
-
-    gReadBufIx = 0;
-    gReadBufEndIx = 0;
-    gReadBuf[0] = 0;
+    input_reset_line();
 }
 
 bool gToggleCursor = false;
@@ -374,13 +253,13 @@ static bool cmd_bye(const char*)
 
 static bool cmd_big(const char*)
 {
-    lcd_set_font(&font_10x16);
+    text_set_font(&font_10x16);
     return true;
 }
 
 static bool cmd_small(const char*)
 {
-    lcd_set_font(&font_5x10);
+    text_set_font(&font_5x10);
     return true;
 }
 
@@ -400,7 +279,7 @@ bool handle_input()
 
         case SDL_TEXTINPUT:
             //printf("textinput: char=%c\n", evt.text.text[0]);
-            handleInputChar(evt.text.text[0]);
+            input_process_char(evt.text.text[0]);
             break;
 
         case SDL_KEYDOWN:
@@ -414,14 +293,16 @@ bool handle_input()
                 case SDLK_BACKSPACE:
                 case SDLK_DELETE:
                 case SDLK_RETURN:
-                    if (handleInputChar(keycode) && (gReadBufEndIx > 0))
+                    input_process_char(keycode);
+                    if (input_has_complete_line())
                         eval_input();
                     break;
                 }
                 switch (scancode)
                 {
                 case SDL_SCANCODE_KP_ENTER:
-                    if (handleInputChar(SDLK_RETURN) && (gReadBufEndIx > 0))
+                    input_process_char(SDLK_RETURN);
+                    if (input_has_complete_line())
                         eval_input();
                     break;
 
@@ -443,15 +324,6 @@ bool handle_input()
 }
 
 //-------------------------------------------------------------------------------------------------
-
-void render()
-{
-    SDL_Surface* screenSurface = SDL_GetWindowSurface(gWindow);
-    SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
-    SDL_UpdateWindowSurface(gWindow);
-}
-
-//-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
 int main()
@@ -469,31 +341,18 @@ int main()
         SDL_Quit();
         return 1;
     }
-
-    gBackBuffer = SDL_CreateRGBSurfaceWithFormat(0, WIDTH, HEIGHT, 16, SDL_PIXELFORMAT_RGB565);
-    if (!gBackBuffer)
-    {
-        fprintf(stderr, "Failed to create RGB565 back buffer: %s\n", SDL_GetError());
-        SDL_Quit();
-        return 1;
-    }
-    if (!init_lcd())
+    if (!lcd_init())
         return 1;
 
-    SDL_Surface* screenSurface = SDL_GetWindowSurface(gWindow);
-
-    SDL_FillRect(gBackBuffer, NULL, 0);
-
-    calc_init(display_puts);
+    calc_init(text_emit_str);
     register_calc_cmd(cmd_big, "big", "", "switches to big text");
     register_calc_cmd(cmd_small, "small", "", "switches to small text");
     register_calc_cmd(cmd_bye, "bye", "", "closes the calc");
 
-    display_puts(MCALC_WELCOME);
-    display_puts(">");
+    text_emit_str(MCALC_WELCOME);
+    text_emit_str(">");
 
-    SDL_BlitScaled(gBackBuffer, NULL, screenSurface, NULL);
-    SDL_UpdateWindowSurface(gWindow);
+    lcd_refresh(gWindow);
 
     SDL_TimerID cursorTimer = SDL_AddTimer(500, cursor_timer_func, nullptr);
     bool showCursor = true;
@@ -516,18 +375,17 @@ int main()
             gToggleCursor = false;
             showCursor = !showCursor;
             if (showCursor)
-                lcd_draw_cursor();
+                cursor_draw();
             else
-                lcd_erase_cursor();
+                cursor_erase();
         }
 
-        render();
+        lcd_refresh(gWindow);
     }
 
     SDL_RemoveTimer(cursorTimer);
 
-    cleanup_lcd();
-    SDL_FreeSurface(gBackBuffer);
+    lcd_cleanup();
     SDL_DestroyWindow(gWindow);
     SDL_Quit();
 
