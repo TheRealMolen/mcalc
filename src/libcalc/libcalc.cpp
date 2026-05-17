@@ -196,6 +196,28 @@ void calc_init(calc_puts_func puts_func)
 
 //-------------------------------------------------------------------------------------------------
 
+static bool is_expr_definition(const char* expr)
+{
+    const char* eqPtr = strchr(expr, '=');
+    const char* mapPtr = strstr(expr, "->");
+    if (!eqPtr && !mapPtr)
+        return false;
+
+    const char* assignmentPtr;
+    if (eqPtr && mapPtr)
+        assignmentPtr = std::min(eqPtr, mapPtr);
+    else
+        assignmentPtr = std::max(eqPtr, mapPtr);
+
+    const char* spacePtr = strchr(expr, ' ');
+    if (!spacePtr)
+        return true;
+
+    return (assignmentPtr < spacePtr);
+}
+
+//-------------------------------------------------------------------------------------------------
+
 bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
 {
     if (!resBuffer)
@@ -206,7 +228,7 @@ bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
     advance_token(parseCtx);
 
     // scan the expression to see if it's something unusual
-    const bool isDefinition = (strchr(expr, '=') != nullptr) || (strstr(expr, "->") != nullptr);
+    const bool isDefinition = is_expr_definition(expr);
 
     bool shouldPrintResult = false;
     double result = 0.0;

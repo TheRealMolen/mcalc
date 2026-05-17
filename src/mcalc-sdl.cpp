@@ -2,11 +2,13 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "drivers/font.h"
+#include "drivers/lcd.h"
+#include "drivers/text.h"
+
 #include "libcalc/libcalc.h"
-#include "libcalc/font.h"
 
 SDL_Window* gWindow = nullptr;
-SDL_Surface* gBackBuffer = nullptr;
 
 bool gWantsQuit = false;
 
@@ -15,70 +17,15 @@ bool gWantsQuit = false;
 // "lcd" driver
 //
 
+#if 0
 // mirroring picocalc-text-starter defines
-#define WIDTH   320
-#define HEIGHT  320
-
-const Font* gFont = &font_10x16;
-//const Font* gFont = &font_5x10;
-
-bool gMonospace = false;
-
-int gCursorX = 0;
-int gCursorY = 0;
-
-constexpr int gMaxColIx = (WIDTH/2) - 1;
-int gCurrColIx = 0;
-uint8_t gColWidths[gMaxColIx+1];
-
-uint16_t gFgCol = 0xff0a;
-uint16_t gBgCol = 0x0000;
-
-SDL_Surface* gCharSurface = nullptr;
-bool init_lcd()
-{
-    gCharSurface = SDL_CreateRGBSurfaceWithFormat(0, FONT_MAX_WIDTH, FONT_MAX_HEIGHT, 16, SDL_PIXELFORMAT_RGB565);
-    if (!gCharSurface)
-    {
-        fprintf(stderr, "Failed to create tiny char surface: %s\n", SDL_GetError());
-        return false;
-    }
-    return true;
-}
-void cleanup_lcd()
-{
-    if (gCharSurface)
-    {
-        SDL_FreeSurface(gCharSurface);
-        gCharSurface = nullptr;
-    }
-}
-
-
-void lcd_set_font(const Font* font)
-{
-    gFont = font;
-}
-
-
-void lcd_erase_cursor()
-{
-    SDL_Rect rect { gCursorX, gCursorY+gFont->Height-1, gFont->Width-1, 1 };
-    SDL_FillRect(gBackBuffer, &rect, gBgCol);
-}
-
-void lcd_draw_cursor()
-{
-    SDL_Rect rect { gCursorX, gCursorY+gFont->Height-1, gFont->Width-1, 1 };
-    SDL_FillRect(gBackBuffer, &rect, gFgCol);
-}
 
 // draws a character to the screen at the specified spot
 // returns the width of the drawn character
 uint8_t lcd_putc(int x, int y, uint8_t c)
 {
     if (!gCharSurface)
-        return x;
+        return 0;
 
     if (SDL_MUSTLOCK(gCharSurface))
         SDL_LockSurface(gCharSurface);
@@ -107,20 +54,31 @@ void lcd_inc_column(uint8_t advance)
     gCursorX += advance;
 
     gColWidths[gCurrColIx] = advance;
-    ++gCurrColIx;
 
-    if (gCursorX >= WIDTH || gCurrColIx > gMaxColIx)
+    if (gCursorX >= WIDTH || gCurrColIx > kMaxColIx)
     {
+        if (gCurrLineIx < kMaxLinesInBuf-1)
+        {
+            gLineEndX[gCurrLineIx] = gCursorX;
+            ++gCurrLineIx;
+        }
+
         gCursorX = 0;
         gCursorY += gFont->Height;
 
-        // TODO: this breaks backspace from one line to the previous
-        // ideally we'd remember the start ix of each line and only reset when flushing
-        gCurrColIx = 0;
+        // flip the sign of the column width so we know about the newline
+        gColWidths[gCurrColIx] = -advance;
     }
+
+    ++gCurrColIx;
+
+    printf("inc_col: adv=%d; curs=%d,%d; col=%d (%d); line=%d; lineEnd=%d\n",
+        advance, gCursorX, gCursorY,
+        gCurrColIx, gColWidths[gCurrColIx],
+        gCurrLineIx, gLineEndX[gCurrLineIx]);
 }
 
-void lcd_backspace()
+void lcd_dec_column()
 {
     if (gCurrColIx <= 0)
         return;
@@ -129,30 +87,29 @@ void lcd_backspace()
 
     --gCurrColIx;
 
-    const int glyphWidth = gColWidths[gCurrColIx];
-    gCursorX -= glyphWidth;
+    int glyphWidth = gColWidths[gCurrColIx];
+    const bool endline = (glyphWidth < 0);
+    if (endline)
+    {
+        glyphWidth = -glyphWidth;
 
-    SDL_Rect rect { gCursorX, gCursorY, glyphWidth, gFont->Height };
-    SDL_FillRect(gBackBuffer, &rect, gBgCol);
+        --gCurrLineIx;
+        gCursorX = gLineEndX[gCurrLineIx];
+
+        gCursorY -= gFont->Height;
+    }
+
+    gCursorX -= glyphWidth;
+    gCursorWidth = glyphWidth;
+
+    printf("dec_col: width=%d; endl=%c, curs=%d,%d; col=%d (%d); line=%d; lineEnd=%d\n",
+        glyphWidth, endline ? 'Y' : 'n', gCursorX, gCursorY,
+        gCurrColIx, gColWidths[gCurrColIx],
+        gCurrLineIx, gLineEndX[gCurrLineIx]);
+
+    lcd_rect(gCursorX, gCursorY, glyphWidth, gFont->Height, gBgCol);
 
     lcd_draw_cursor();
-}
-
-void lcd_scroll_up(uint32_t distance)
-{
-    lcd_erase_cursor();
-
-    SDL_Rect srcRect { 0, int(distance), WIDTH, HEIGHT };
-    SDL_Rect dstRect { 0, 0, WIDTH, HEIGHT };
-    SDL_BlitSurface(gBackBuffer, &srcRect, gBackBuffer, &dstRect);
-
-    SDL_Rect clrRect { 0, HEIGHT-int(distance), WIDTH, int(distance) };
-    SDL_FillRect(gBackBuffer, &clrRect, gBgCol);
-
-    if (gCursorY > int(distance))
-        gCursorY -= distance;
-    else
-        gCursorY = 0;
 }
 
 void lcd_next_line()
@@ -162,6 +119,14 @@ void lcd_next_line()
 
     while(gCursorY >= (HEIGHT - glyphHeight))
         lcd_scroll_up(glyphHeight);
+}
+
+void lcd_prev_line()
+{
+    
+
+    const int glyphHeight = gFont->Height;
+    gCursorY += glyphHeight;
 }
 
 void lcd_next_tab()
@@ -204,6 +169,15 @@ void lcd_emit(char c)
     default:
         if (c >= 0x20 && c < 0x7f)
         {
+            // TODO: refactor this; should all be in a single call!
+
+            // if this char would end off the screen, advance to the next line immediately
+            const GlyphMetric metric = font_get_glyph_metric(gFont, c, gMonospace);
+            if (gCursorX + metric.Advance >= WIDTH)
+            {
+                lcd_inc_column(metric.Advance);
+            }
+
             const uint8_t advance = lcd_putc(gCursorX, gCursorY, c);
             lcd_inc_column(advance);
         }
@@ -254,42 +228,108 @@ void display_puts(const char* s)
 }
 
 
-char gReadBuf[256] = {0};
-constexpr int kReadBufSize = sizeof(gReadBuf) / sizeof(gReadBuf[0]);
-int gReadBufIx = 0;
+
+
+constexpr int kReadBufSize = 256;
+int16_t gReadBufIx = 0;     // the index of the cursor within the readbuf
+int16_t gReadBufEndIx = 0;  // the index of the final character in the readbuf
+char gReadBuf[kReadBufSize] = {0};
+
+// the line history buffer is in two parts:
+//  1. a rolling buffer of chars excluding newlines and terminators; just a big block of chars
+//  2. ringbuffer of indices into the above + lengths
+constexpr int kHistoryBufSize = 2 * 1024;
+constexpr int kHistoryMaxLines = 32;
+
+struct HistoryLine
+{
+    uint16_t StartIx = 0;
+    uint16_t Length = 0;
+    bool     Valid = false;
+};
+
+char gHistoryBuf[kHistoryBufSize] = {0};
+int gNextHistoryWriteChar = 0;
+HistoryLine gHistoryLines[kHistoryMaxLines];
+int gCurrHistoryLine = 0;
+
+void input_init()
+{
+    for (HistoryLine& line : gHistoryLines)
+        line.Valid = false;
+}
+
+void input_enterChar(char c)
+{
+    if (gReadBufIx < gReadBufEndIx)
+    {
+        memmove(gReadBuf + gReadBufIx + 1, gReadBuf + gReadBufIx, gReadBufEndIx - gReadBufIx);
+    }
+
+    gReadBuf[gReadBufIx] = c;
+    ++gReadBufIx;
+    ++gReadBufEndIx;
+
+    lcd_emit(c);
+}
+
+void input_deletePrevChar()
+{
+    if (gReadBufIx > 0)
+    {
+        --gReadBufIx;
+        --gReadBufEndIx;
+        gReadBuf[gReadBufIx] = 0; // blank out whatever was there
+
+        // erase the last char on screen
+        display_puts("\b \b");
+    }
+}
+
+void input_moveCursorLeft()
+{
+    if (gReadBufIx > 0)
+
+}
+
+void input_moveCursorRight()
+{
+}
+
+
+
+inline bool input_hasData()
+{
+    return gReadBufEndIx > 0;
+}
+
+#endif
+
 
 // returns true if the input ended a command that should be processed
 bool handleInputChar(char c)
 {
     if (c == '\r' || c == '\n')
     {
-        if (gReadBufIx == 0)
-            return false;
-
         lcd_emit(SDLK_RETURN);
 
         // null-terminate and return executable
-        gReadBuf[gReadBufIx] = 0;
+        gReadBuf[gReadBufEndIx] = 0;
         return true;
     }
 
     if (c == SDLK_BACKSPACE)
     {
-        if (gReadBufIx > 0)
-        {
-            --gReadBufIx;
-            gReadBuf[gReadBufIx] = 0; // blank out whatever was there
-
-            // erase the last char on screen
-            display_puts("\b \b");
-        }
+        input_deletePrevChar();
+    }
+    else if (c == SDLK_DELETE)
+    {
+        input_moveCursorRight();
+        input_deletePrevChar();
     }
     else if ((gReadBufIx+1 < kReadBufSize) && (c >= 0x20) && (c < 0x7f))
     {
-        gReadBuf[gReadBufIx] = c;
-        ++gReadBufIx;
-
-        lcd_emit(c);
+        input_enterChar(c);
     }
 
     return false;
@@ -311,6 +351,7 @@ void eval_input()
     display_puts("\n>");
 
     gReadBufIx = 0;
+    gReadBufEndIx = 0;
     gReadBuf[0] = 0;
 }
 
@@ -368,17 +409,19 @@ bool handle_input()
                 const int scancode = evt.key.keysym.scancode;
                 switch (keycode)
                 {
+                case SDLK_LEFT:
+                case SDLK_RIGHT:
                 case SDLK_BACKSPACE:
                 case SDLK_DELETE:
                 case SDLK_RETURN:
-                    if (handleInputChar(keycode) && (gReadBufIx > 0))
+                    if (handleInputChar(keycode) && (gReadBufEndIx > 0))
                         eval_input();
                     break;
                 }
                 switch (scancode)
                 {
                 case SDL_SCANCODE_KP_ENTER:
-                    if (handleInputChar(SDLK_RETURN) && (gReadBufIx > 0))
+                    if (handleInputChar(SDLK_RETURN) && (gReadBufEndIx > 0))
                         eval_input();
                     break;
 
