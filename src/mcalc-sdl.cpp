@@ -64,7 +64,7 @@ static bool cmd_small(const char*)
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
-bool handle_input()
+bool handle_input(bool* outAnyInput)
 {
     SDL_Event evt;
     while (SDL_PollEvent(&evt))
@@ -78,14 +78,23 @@ bool handle_input()
         case SDL_TEXTINPUT:
             //printf("textinput: char=%c\n", evt.text.text[0]);
             input_process_char(evt.text.text[0]);
+
+            if (outAnyInput)
+                *outAnyInput = true;
+
             break;
 
         case SDL_KEYDOWN:
             {
+                if (outAnyInput)
+                    *outAnyInput = true;
+
                 const int keycode = evt.key.keysym.sym;
                 const int scancode = evt.key.keysym.scancode;
                 switch (keycode)
                 {
+                case SDLK_UP:
+                case SDLK_DOWN:
                 case SDLK_LEFT:
                 case SDLK_RIGHT:
                 case SDLK_BACKSPACE:
@@ -166,7 +175,7 @@ int main()
 
     while (!gWantsQuit)
     {
-        handle_input();
+        handle_input(nullptr);
 
         if (gToggleCursor)
         {
