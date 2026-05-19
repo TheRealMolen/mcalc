@@ -1,5 +1,7 @@
 #include "animrender.h"
 
+#include "platform.h"
+
 #include "drivers/keyboard.h"
 #include "drivers/lcd.h"
 #include "drivers/text.h"

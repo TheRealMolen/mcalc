@@ -213,7 +213,19 @@ static bool is_expr_definition(const char* expr)
     if (!spacePtr)
         return true;
 
-    return (assignmentPtr < spacePtr);
+    if (assignmentPtr < spacePtr)
+        return true;
+
+    // we now need to disambiguate "f(x) = ..." and "xy a=3"
+    const int prefixLen = spacePtr - expr;
+    char cmdbuf[kMaxSymbolLength+1];
+    memcpy(cmdbuf, expr, prefixLen);
+    cmdbuf[prefixLen+1] = 0;
+    const CommandDef* cmd = lookup_command(cmdbuf);
+    if (cmd)
+        return false;
+
+    return true;
 }
 
 //-------------------------------------------------------------------------------------------------
