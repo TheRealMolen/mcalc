@@ -173,12 +173,10 @@ void text_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh)
     while (height_remaining > 0)
     {
         constexpr int line_height = 1;
-
-        // scroll up enough so there's at least imgh pixels free to draw on 
-        // nb. we're over-clearing the back buf at this point as we're about to blat over a chunk with the img 
-        if (gCursorY > HEIGHT - line_height - 1) 
+        if (gCursorY >= HEIGHT - line_height) 
         { 
-            lcd_scroll_up(line_height); 
+            lcd_scroll_up(1); 
+            gCursorY -= 1;
         }
 
         const int img_left = (int)(WIDTH - imgw - 1);
