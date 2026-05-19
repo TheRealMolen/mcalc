@@ -51,12 +51,11 @@ void lcd_cleanup()
 
 //-------------------------------------------------------------------------------------------------
 
-#ifdef MLN_TARGET_PC
 void lcd_refresh(SDL_Window* window)
 {
-    static int lastLoggedOffs = -1;
-    const bool shouldLog = lcd_y_offset != lastLoggedOffs;
-    lastLoggedOffs = lcd_y_offset;
+    //static int lastLoggedOffs = -1;
+    constexpr bool shouldLog = false; //lcd_y_offset != lastLoggedOffs;
+    //lastLoggedOffs = lcd_y_offset;
 
     if (shouldLog)
         printf("\nrefresh, y_offs=%d\n", lcd_y_offset);
@@ -64,8 +63,6 @@ void lcd_refresh(SDL_Window* window)
     // step 1: render the top part of the screen, scrolled up by the current scroll offset
     SDL_Rect src { 0, 0, WIDTH, FRAME_HEIGHT };
     SDL_Rect dest { 0, -lcd_y_offset, 0, 0 };
-    //src.y = lcd_y_offset;
-    //src.h = FRAME_HEIGHT - lcd_y_offset;
     if (shouldLog)
         printf("blit1: src(%d, %d, %d, %d)  -> dst(%d, %d, %d, %d)\n",
             src.x, src.y, src.w, src.h, dest.x, dest.y, dest.w, dest.h);
@@ -85,7 +82,6 @@ void lcd_refresh(SDL_Window* window)
     SDL_BlitScaled(gBackBuffer, nullptr, screenSurface, nullptr);
     SDL_UpdateWindowSurface(window);
 }
-#endif
 
 //----------------------------------------------------------------------------------------
 
@@ -190,5 +186,5 @@ void lcd_scroll_down(uint32_t distance, uint16_t clearCol)
     lcd_rect(0, 0, WIDTH, distance, clearCol);
 }
 
-
+//----------------------------------------------------------------------------------------
 

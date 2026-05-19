@@ -1,19 +1,16 @@
 #include "animrender.h"
 
+#include "drivers/keyboard.h"
+#include "drivers/lcd.h"
+#include "drivers/text.h"
+
 #include <cstring>
 
 #if MLN_TARGET_PC
-
 // defined in the main SDL wrapper
 extern SDL_Window* gWindow;
 extern bool handle_input();
 extern void render();
-
-#elif MLN_TARGET_PICO
-
-#include "drivers/keyboard.h"
-#include "drivers/lcd.h"
-
 #endif
 
 //-------------------------------------------------------------------------------------------------
@@ -42,18 +39,6 @@ constexpr uint16_t darkenTimes<0>(uint16_t c)
 {
     return c;
 }
-
-
-#if MLN_TARGET_PC
-void darken(SDL_Surface* surf)
-{
-    uint16_t* pix = (uint16_t*)(surf->pixels);
-    int stride = surf->pitch / sizeof(uint16_t);
-    uint16_t* pixEnd = pix + (stride * surf->h);
-    for (uint16_t* p = pix; p != pixEnd; ++p)
-        *p = darken(*p);
-}
-#endif
 
 
 static constexpr uint16_t COL_AMBER = 0xff0a;
@@ -134,13 +119,11 @@ AnimRenderer::AnimRenderer(float minX, float maxX, float minY, float maxY)
     mSurf = SDL_CreateRGBSurfaceWithFormat(0, IMGW, IMGH, 16, SDL_PIXELFORMAT_RGB565);
     if (!mSurf)
         return;
-
-#elif MLN_TARGET_PICO
+#endif
 
     lcd_scroll_clear();
-    lcd_enable_cursor(false);
+    cursor_enable(false);
 
-#endif
 }
 
 AnimRenderer::~AnimRenderer()
@@ -148,12 +131,9 @@ AnimRenderer::~AnimRenderer()
 #if MLN_TARGET_PC
     SDL_FreeSurface(mSurf);
     mSurf = nullptr;
-
-#elif MLN_TARGET_PICO
-
-    lcd_enable_cursor(true);
-
 #endif
+
+    cursor_enable(true);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -165,25 +145,6 @@ void AnimRenderer::darken()
 
 void AnimRenderer::blit() const
 {
-#if 0 && defined(MLN_TARGET_PC)
-
-    SDL_LockSurface(mSurf);
-
-    const int stride = mSurf->pitch / sizeof(uint16_t);
-    uint16_t* row = reinterpret_cast<uint16_t*>(mSurf->pixels);
-    for (int i=0; i<IMGH; ++i, row += stride)
-    {
-        mFb.getRow(i, row);
-    }
-
-    SDL_UnlockSurface(mSurf);
-
-    SDL_Rect dstRect { TinyScopeFrameBuf::BORDER, TinyScopeFrameBuf::BORDER, 0, 0 };
-    SDL_BlitSurface(mSurf, nullptr, gBackBuffer, &dstRect);
-    render();
-
-#elif defined(MLN_TARGET_PICO)
-
     // expand row-by-row to local array and then blit each of those in turn
     uint16_t row[IMGW];
     const int x = TinyScopeFrameBuf::BORDER;
@@ -195,16 +156,18 @@ void AnimRenderer::blit() const
         lcd_blit(row, x, y, IMGW, 1);
     }
 
+#ifdef MLN_TARGET_PC
+    lcd_refresh(gWindow);
 #endif
 }
 
 bool AnimRenderer::check_for_break()
 {
-#if MLN_TARGET_PC
+#if defined(MLN_TARGET_PC)
 
     return handle_input() == false;
 
-#elif MLN_TARGET_PICO
+#elif defined(MLN_TARGET_PICO)
 
     return keyboard_key_available();
 
