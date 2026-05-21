@@ -21,13 +21,14 @@ void eval_input()
 {
     char resBuf[1024];
 
+    reset_plot();
+
     calc_eval(input_get_line(), resBuf, sizeof(resBuf));
     text_emit_str(resBuf);
 
     if (const Plot* plot = get_plot())
     {
         text_put_image(plot->Pixels, MC_PLOT_WIDTH, MC_PLOT_HEIGHT);
-        reset_plot();
     }
 
     input_reset_line();
@@ -157,7 +158,7 @@ int main()
     register_calc_cmd(cmd_bye, "bye", "", "closes the calc");
 
     text_emit_str(MCALC_WELCOME);
-    text_emit_str(">");
+    input_reset_line();
 
     lcd_refresh(gWindow);
 
