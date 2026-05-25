@@ -1,5 +1,9 @@
 #include "plot.h"
 
+#include "drivers/colours.h"
+#include "drivers/lcd.h"
+#include "drivers/palette.h"
+
 #include "funcs.h"
 
 //-------------------------------------------------------------------------------------------------
@@ -21,7 +25,7 @@ void reset_plot()
 
 //-------------------------------------------------------------------------------------------------
 
-static inline void safePlot(int x, int y, uint16_t col)
+static inline void safePlot(int x, int y, col_t col)
 {
     if (y >= 0 && y < MC_PLOT_HEIGHT)
     {
@@ -29,7 +33,7 @@ static inline void safePlot(int x, int y, uint16_t col)
     }
 }
 
-static void interpolateY(int startXi, int startYi, int endYi, uint16_t col)
+static void interpolateY(int startXi, int startYi, int endYi, col_t col)
 {
     if (startYi > endYi)
     {
@@ -71,18 +75,18 @@ static void interpolateY(int startXi, int startYi, int endYi, uint16_t col)
     }
 };
 
-static void plot_hline_fast(int x0, int y, int x1, uint16_t col)
+static void plot_hline_fast(int x0, int y, int x1, col_t col)
 {
-    uint16_t* pix = gPlot.Pixels + x0 + (y*MC_PLOT_WIDTH);
-    const uint16_t* pixEnd = pix + (x1 - x0 + 1);
+    col_t* pix = gPlot.Pixels + x0 + (y*MC_PLOT_WIDTH);
+    const col_t* pixEnd = pix + (x1 - x0 + 1);
     while (pix != pixEnd)
         *(pix++) = col;
 }
 
-static void plot_vline_fast(int x, int y0, int y1, uint16_t col)
+static void plot_vline_fast(int x, int y0, int y1, col_t col)
 {
-    uint16_t* pix = gPlot.Pixels + x + (y0*MC_PLOT_WIDTH);
-    const uint16_t* pixEnd = pix + (y1 - y0 + 1) * MC_PLOT_WIDTH;
+    col_t* pix = gPlot.Pixels + x + (y0*MC_PLOT_WIDTH);
+    const col_t* pixEnd = pix + (y1 - y0 + 1) * MC_PLOT_WIDTH;
     for (; pix != pixEnd; pix += MC_PLOT_WIDTH)
         *pix= col;
 }
@@ -98,16 +102,24 @@ bool draw_plot(const char* func_name, const PlotAxis* xAxis, const PlotAxis* yAx
         return false;
 
     constexpr int border = 4;
-    const uint16_t bgCol = 0x1862;
-    const uint16_t axisCol = 0x39c4;
-    const uint16_t lineCol = 0xff0a;
+
+#if LCD_USEPALETTE
+    const col_t bgCol = PAL_PLOTAREA;
+    const col_t axisCol = PAL_PLOTAXIS;
+    const col_t lineCol = PAL_FG;
+#else
+    const Palette* pal = gfx_get_palette();
+    const col_t bgCol = pal->Cols[PAL_PLOTAREA];
+    const col_t axisCol = pal->Cols[PAL_PLOTAXIS];
+    const col_t lineCol = pal->Cols[PAL_FG];
+#endif
 
     const FastAxis xAx(*xAxis, border, MC_PLOT_WIDTH - border - 1);
     const FastAxis yAx(*yAxis, MC_PLOT_HEIGHT - border - 1, border);
 
     // clear our plot pixels
-    uint16_t* pix = gPlot.Pixels;
-    uint16_t* pixEnd = pix + (MC_PLOT_WIDTH * MC_PLOT_HEIGHT);
+    col_t* pix = gPlot.Pixels;
+    col_t* pixEnd = pix + (MC_PLOT_WIDTH * MC_PLOT_HEIGHT);
     for (; pix != pixEnd; ++pix)
         *pix = bgCol;
 

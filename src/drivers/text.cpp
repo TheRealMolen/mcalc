@@ -7,9 +7,11 @@
 
 #include <string.h>
 
+#include "colours.h"
 #include "font.h"
 #include "keyboard.h"
 #include "lcd.h"
+#include "palette.h"
 #include "platform.h"
 
 #if MLN_TARGET_PICO
@@ -20,17 +22,20 @@
 // Text drawing
 const Font *gFont = &font_10x16;
 
-static uint16_t char_buffer[16 * FONT_MAX_HEIGHT] __attribute__((aligned(4)));
-
-static uint16_t gFgCol = 0xFF07;
-static uint16_t gBgCol = 0x0000;
+#if LCD_USEPALETTE
+static col_t gFgCol = PAL_FG;
+static col_t gBgCol = PAL_BG;
+#else
+static col_t gFgCol = COL_DEFAULT_FG;
+static col_t gBgCol = COL_DEFAULT_BG;
+#endif
 
 static bool gMonospace = false;
 
 //----------------------------------------------------------------------------------------
 // Cursor
-static int gCursorX = 0;
-static int gCursorY = 0;
+static int gCursorX = 2;
+static int gCursorY = 2;
 static int8_t gCursorWidth = gFont->Width;
 
 static bool gCursorEnabled = true; // cursor visibility state
@@ -97,14 +102,23 @@ void text_set_font(const Font *new_font)
     gFont = new_font;
 }
 
-void text_set_foreground(uint16_t colour)
+void text_set_foreground(col_t colour)
 {
     gFgCol = colour;
 }
 
-void text_set_background(uint16_t colour)
+void text_set_background(col_t colour)
 {
     gBgCol = colour;
+}
+
+col_t text_get_foreground()
+{
+    return gFgCol;
+}
+col_t text_get_background()
+{
+    return gBgCol;
 }
 
 void text_set_monospace(bool mono)
@@ -120,7 +134,7 @@ void text_scroll_up()
 
     const int distance = gFont->Height;
 
-    lcd_scroll_up(distance);
+    lcd_scroll_up(distance, gBgCol);
 
     const int startY = gCursorY;
     if (gCursorY > distance)
@@ -137,6 +151,8 @@ void text_scroll_up()
 // returns the width of the drawn character
 uint8_t text_putc(int x, int y, uint8_t c)
 {
+    col_t char_buffer[16 * FONT_MAX_HEIGHT] __attribute__((aligned(4)));
+
     const int glyph_width = gFont->Width;
     const int glyph_height = gFont->Height;
     font_rasterise_char(gFont, c, gFgCol, gBgCol, char_buffer, glyph_width, glyph_height, 0, 0);
@@ -146,8 +162,8 @@ uint8_t text_putc(int x, int y, uint8_t c)
     // if we have any skipping/shrinking to do, do that inplace
     if (metric.Skip > 0 || metric.Advance < glyph_width)
     {
-        uint16_t* dest = char_buffer;
-        const uint16_t* src = char_buffer + metric.Skip;
+        col_t* dest = char_buffer;
+        const col_t* src = char_buffer + metric.Skip;
         for (int row = 0; row < glyph_height; ++row)
         {
             memmove(dest, src, metric.Advance * sizeof(*src));
@@ -164,7 +180,7 @@ uint8_t text_putc(int x, int y, uint8_t c)
 }
 
 
-void text_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh) 
+void text_put_image(const col_t* pixels, uint32_t imgw, uint32_t imgh) 
 {
     cursor_erase();
 
@@ -174,7 +190,7 @@ void text_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh)
     // is more effort than i'm interested in :)
     uint32_t height_remaining = imgh;
 
-    const uint16_t* next_pixels = pixels;
+    const col_t* next_pixels = pixels;
     while (height_remaining > 0)
     {
         constexpr int line_height = 1;
@@ -187,6 +203,7 @@ void text_put_image(const uint16_t* pixels, uint32_t imgw, uint32_t imgh)
 
         const int img_left = (int)(WIDTH - imgw - 1);
 
+        lcd_rect(0, gCursorY, img_left - 1, 1, gBgCol);
         lcd_blit(next_pixels, img_left, gCursorY, imgw, line_height);
     
         gCursorY += line_height;
@@ -296,7 +313,7 @@ void text_emit_str(const char* s)
 void text_clear_line(const char* prompt)
 {
     int input_height = (gCursorY - gInputStartY) + gFont->Height;
-    lcd_rect(0, gInputStartY, WIDTH, input_height, 0);
+    lcd_rect(0, gInputStartY, WIDTH, input_height, gBgCol);
 
     gCursorX = 0;
     gCursorY = gInputStartY;
@@ -325,7 +342,7 @@ bool cursor_is_enabled()
 }
 
 
-static void blit_cursor(uint16_t col)
+static void blit_cursor(col_t col)
 {
     if (!gCursorEnabled)
         return;

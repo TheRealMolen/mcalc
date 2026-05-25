@@ -6,12 +6,18 @@
 
 #include <SDL.h>
 
+#include "colours.h"
 #include "font.h"
 #include "lcd.h"
+#include "palette.h"
 
 //----------------------------------------------------------------------------------------
 
-#define FRAME_HEIGHT    (480)
+#if LCD_USEFRAMEBUF
+static col_t gFramebuf[WIDTH*BACKBUF_HEIGHT];
+#endif
+
+static const Palette* gActivePalette = nullptr;
 
 //----------------------------------------------------------------------------------------
 
@@ -22,9 +28,50 @@ static uint16_t lcd_y_offset = 0;  // offset for vertical scrolling
 
 //----------------------------------------------------------------------------------------
 
-bool lcd_init()
+void gfx_set_palette(const Palette* palette)
 {
-    gFrameSurface = SDL_CreateRGBSurfaceWithFormat(0, WIDTH, FRAME_HEIGHT, 16, SDL_PIXELFORMAT_RGB565);
+    gActivePalette = palette;
+}
+
+const Palette* gfx_get_palette()
+{
+    return gActivePalette;
+}
+
+//----------------------------------------------------------------------------------------
+
+void fb_blitline(int x, int y, int width, const uint8_t* pixels)
+{
+#if LCD_USEFRAMEBUF
+    memcpy(gFramebuf + (y*WIDTH + x), pixels, width);
+#endif
+}
+
+void fb_readback(int x, int y, int width, int height, col8_t *out_pixels)
+{
+#if LCD_USEFRAMEBUF
+
+    int y_framebuf = (y + lcd_y_offset);
+    if (y_framebuf >= BACKBUF_HEIGHT)
+        y_framebuf -= BACKBUF_HEIGHT;
+
+    for (int row_ix = 0; row_ix < height; ++row_ix, out_pixels += width)
+    {
+        memcpy(out_pixels, gFramebuf + (y_framebuf*WIDTH + x), width);
+
+        ++y_framebuf;
+        if (y_framebuf >= BACKBUF_HEIGHT)
+            y_framebuf -= BACKBUF_HEIGHT;
+    }
+
+#endif
+}
+
+//----------------------------------------------------------------------------------------
+
+bool lcd_init(col_t clearCol)
+{
+    gFrameSurface = SDL_CreateRGBSurfaceWithFormat(0, WIDTH, BACKBUF_HEIGHT, 16, SDL_PIXELFORMAT_RGB565);
     if (!gFrameSurface)
     {
         fprintf(stderr, "Failed to create RGB565 frame surface: %s\n", SDL_GetError());
@@ -37,8 +84,14 @@ bool lcd_init()
         return false;
     }
 
-    SDL_FillRect(gFrameSurface, NULL, 0);
-    SDL_FillRect(gBackBuffer, NULL, 0);
+    col16_t clearCol16 = clearCol;
+#if LCD_USEPALETTE
+    if (!gActivePalette)
+        throw "didn't set up palette";
+    clearCol16 = gActivePalette->Cols[clearCol];
+#endif
+
+    SDL_FillRect(gFrameSurface, NULL, clearCol16);
 
     return true;
 }
@@ -61,7 +114,7 @@ void lcd_refresh(SDL_Window* window)
         printf("\nrefresh, y_offs=%d\n", lcd_y_offset);
 
     // step 1: render the top part of the screen, scrolled up by the current scroll offset
-    SDL_Rect src { 0, 0, WIDTH, FRAME_HEIGHT };
+    SDL_Rect src { 0, 0, WIDTH, BACKBUF_HEIGHT };
     SDL_Rect dest { 0, -lcd_y_offset, 0, 0 };
     if (shouldLog)
         printf("blit1: src(%d, %d, %d, %d)  -> dst(%d, %d, %d, %d)\n",
@@ -70,8 +123,8 @@ void lcd_refresh(SDL_Window* window)
 
     // step 2: render the bottom part of the screen
     // note that SDL_BlitSurface may overwrite our rects with clipped width & height, so we recreate
-    src = SDL_Rect{ 0, 0, WIDTH, FRAME_HEIGHT };
-    dest = SDL_Rect{ 0, FRAME_HEIGHT-lcd_y_offset, 0, 0 };
+    src = SDL_Rect{ 0, 0, WIDTH, BACKBUF_HEIGHT };
+    dest = SDL_Rect{ 0, BACKBUF_HEIGHT-lcd_y_offset, 0, 0 };
     if (shouldLog)
         printf("blit2: src(%d, %d, %d, %d)  -> dst(%d, %d, %d, %d)\n",
             src.x, src.y, src.w, src.h, dest.x, dest.y, dest.w, dest.h);
@@ -85,45 +138,65 @@ void lcd_refresh(SDL_Window* window)
 
 //----------------------------------------------------------------------------------------
 
-void lcd_rect(int x, int y, int w, int h, uint16_t col)
+void lcd_rect(int x, int y, int width, int height, col_t col)
 {
-    // cope with rect wrapping around Y
-    int y_framebuf = (y + lcd_y_offset);
-    if (y_framebuf >= FRAME_HEIGHT)
-        y_framebuf -= FRAME_HEIGHT;
+    static col_t pixels[WIDTH];
 
-    int overflow = (y_framebuf + h) - FRAME_HEIGHT;
-    if (overflow <= 0)
+    for (int i = 0; i < width; i++)
     {
-        SDL_Rect rect { x, y_framebuf, w, h };
-        SDL_FillRect(gFrameSurface, &rect, col);
+        pixels[i] = col;
     }
-    else
+    for (int row = 0; row < height; row++)
     {
-        SDL_Rect btm_rect { x, y_framebuf, w, h - overflow };
-        SDL_FillRect(gFrameSurface, &btm_rect, col);
-        
-        SDL_Rect top_rect { x, 0, w, overflow };
-        SDL_FillRect(gFrameSurface, &top_rect, col);
+        lcd_blit(pixels, x, y + row, width, 1);
     }
 }
 
 //----------------------------------------------------------------------------------------
 
-void lcd_blit(const uint16_t *pixels, int x, int y, int width, int height)
+void lcd_blit(const col_t *pixels, int x, int y, int width, int height)
 {
+    // cope with rect wrapping around Y
+    int y_framebuf = (y + lcd_y_offset);
+    if (y_framebuf >= BACKBUF_HEIGHT)
+        y_framebuf -= BACKBUF_HEIGHT;
+
+#if LCD_USEPALETTE
+    if (!gActivePalette)
+        return;
+
+    const uint32_t flags = 0;
+    SDL_Surface* lineSurf = SDL_CreateRGBSurfaceWithFormat(flags, width, 1, 16, SDL_PIXELFORMAT_RGB565);
+
+    col16_t* line = reinterpret_cast<col16_t*>(lineSurf->pixels);
+
+    for (int row_ix = 0; row_ix < height; ++row_ix)
+    {
+        gActivePalette->Inflate(line, pixels, width);
+
+        SDL_Rect dst { x, y_framebuf, width, 1 };
+        SDL_BlitSurface(lineSurf, nullptr, gFrameSurface, &dst);
+
+        fb_blitline(x, y_framebuf, width, pixels);
+
+        ++y_framebuf;
+        if (y_framebuf >= BACKBUF_HEIGHT)
+            y_framebuf = 0;
+
+        pixels += width;
+    }
+
+    SDL_FreeSurface(lineSurf);
+
+#else
+
     constexpr int depth = sizeof(*pixels) * 8;
     const int pitch = width * sizeof(*pixels);
 
     SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormatFrom(
         const_cast<uint16_t*>(pixels), width, height, depth, pitch, SDL_PIXELFORMAT_RGB565);
 
-    // cope with rect wrapping around Y
-    int y_framebuf = (y + lcd_y_offset);
-    if (y_framebuf >= FRAME_HEIGHT)
-        y_framebuf -= FRAME_HEIGHT;
-
-    int overflow = (y_framebuf + height) - FRAME_HEIGHT;
+    int overflow = (y_framebuf + height) - BACKBUF_HEIGHT;
     if (overflow <= 0)
     {
         SDL_Rect dst { x, y_framebuf, width, height };
@@ -140,6 +213,8 @@ void lcd_blit(const uint16_t *pixels, int x, int y, int width, int height)
     }
 
     SDL_FreeSurface(surf);
+
+#endif
 }
 
 //----------------------------------------------------------------------------------------
@@ -157,7 +232,7 @@ void lcd_scroll_reset()
     lcd_y_offset = 0;
 }
 
-void lcd_scroll_clear(uint16_t col)
+void lcd_scroll_clear(col_t col)
 {
     lcd_scroll_reset();
 
@@ -166,21 +241,21 @@ void lcd_scroll_clear(uint16_t col)
 
 
 // Scroll the screen up (make space at the bottom)
-void lcd_scroll_up(uint32_t distance, uint16_t clearCol)
+void lcd_scroll_up(uint32_t distance, col_t clearCol)
 {
     lcd_y_offset += distance;
-    while (lcd_y_offset >= FRAME_HEIGHT)
-        lcd_y_offset -= FRAME_HEIGHT;
+    while (lcd_y_offset >= BACKBUF_HEIGHT)
+        lcd_y_offset -= BACKBUF_HEIGHT;
 
     // we have just exposed an uncleared area of the framebuf, so clear it
     lcd_rect(0, HEIGHT - distance, WIDTH, distance, clearCol);
 }
 
 // Scroll the screen down one line (making space at the top)
-void lcd_scroll_down(uint32_t distance, uint16_t clearCol)
+void lcd_scroll_down(uint32_t distance, col_t clearCol)
 {
     // This will rotate the content in the scroll area down by one line
-    lcd_y_offset = (lcd_y_offset - distance + FRAME_HEIGHT) % FRAME_HEIGHT;
+    lcd_y_offset = (lcd_y_offset - distance + BACKBUF_HEIGHT) % BACKBUF_HEIGHT;
 
     // Clear the new line at the top
     lcd_rect(0, 0, WIDTH, distance, clearCol);

@@ -1,6 +1,9 @@
 #pragma once
 
-#include "stdint.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "drivers/colours.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -8,7 +11,16 @@ extern "C" {
 
 //-------------------------------------------------------------------------------------------------
 
-#define MCALC_WELCOME   "molencalc v18z\t   don't panic\n"
+typedef struct Palette Palette;
+
+//-------------------------------------------------------------------------------------------------
+
+#define MCALC_WELCOME   "molencalc v19\t   don't panic\n"
+
+//-------------------------------------------------------------------------------------------------
+
+const Palette* palette_get_lite();
+const Palette* palette_get_dark();
 
 //-------------------------------------------------------------------------------------------------
 
@@ -42,7 +54,7 @@ bool calc_eval(const char* expr, char* resBuffer, int resBufferLen);
 
 typedef struct
 {
-    uint16_t Pixels[MC_PLOT_WIDTH * MC_PLOT_HEIGHT];
+    col_t Pixels[MC_PLOT_WIDTH * MC_PLOT_HEIGHT];
 } Plot;
 
 

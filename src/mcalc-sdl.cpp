@@ -4,6 +4,7 @@
 
 #include "drivers/font.h"
 #include "drivers/lcd.h"
+#include "drivers/palette.h"
 #include "drivers/text.h"
 
 #include "libcalc/libcalc.h"
@@ -65,6 +66,69 @@ static bool cmd_small(const char*)
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
+static bool cmd_screenshot(const char*)
+{
+    col8_t pixels[WIDTH*HEIGHT];
+
+    //lcd_readback(0, 0, WIDTH, HEIGHT, pixels);
+    fb_readback(0, 0, WIDTH, HEIGHT, pixels);
+
+    const Palette* pal = gfx_get_palette();
+    if (!pal)
+    {
+        text_emit_str("\nerr: no palette\n");
+        return false;
+    }
+    constexpr int numCols = 256;
+    uint8_t palRgb[numCols * 4];
+    pal->ExportAsBGRQuads(palRgb, numCols);
+
+   /* {
+        char head[1024];
+        sprintf(head, "data starts: %04x %04x %04x %04x\n"
+                      "             %04x %04x %04x %04x\n",
+            int(pixels[0]), int(pixels[1]), int(pixels[2]), int(pixels[3]),
+            int(pixels[4]), int(pixels[5]), int(pixels[6]), int(pixels[7]));
+
+        text_emit_str(head);
+    }*/
+
+    FILE* fp = fopen("mc-scr.data", "wb");
+    if (!fp)
+    {
+        text_emit_str("\nerr: unable to open screenshot file for writing\n");
+        return false;
+    }
+
+    size_t total_bytes = sizeof(pixels);
+    const char* outbuf = reinterpret_cast<char*>(pixels);
+    size_t total_written = 0;
+    for (;;)
+    {
+        size_t bytes_written = fwrite(outbuf, 1, total_bytes - total_written, fp);
+        total_written += bytes_written;
+        outbuf += bytes_written;
+        if (total_written == total_bytes)
+            break;
+
+        if (bytes_written == 0)
+        {
+            text_emit_str("Img write failed. Abandoning.\n");
+            break;
+        }
+
+        text_emit_str("write to img continuing...\n");
+    }
+
+    fwrite(palRgb, 1, sizeof(palRgb), fp);
+
+    fclose(fp);
+
+    return true;
+}
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+
 bool handle_input(bool* outAnyInput)
 {
     SDL_Event evt;
@@ -104,6 +168,10 @@ bool handle_input(bool* outAnyInput)
                     input_process_char(keycode);
                     if (input_has_complete_line())
                         eval_input();
+                    break;
+
+                case SDLK_F12:
+                    cmd_screenshot(nullptr);
                     break;
                 }
                 switch (scancode)
@@ -149,7 +217,10 @@ int main()
         SDL_Quit();
         return 1;
     }
-    if (!lcd_init())
+
+    gfx_set_palette(palette_get_lite());
+
+    if (!lcd_init(text_get_background()))
         return 1;
 
     calc_init(text_emit_str);
