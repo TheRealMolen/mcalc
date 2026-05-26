@@ -8,16 +8,9 @@
 
 #include "colours.h"
 #include "font.h"
+#include "gfx.h"
 #include "lcd.h"
 #include "palette.h"
-
-//----------------------------------------------------------------------------------------
-
-#if LCD_USEFRAMEBUF
-static col_t gFramebuf[WIDTH*BACKBUF_HEIGHT];
-#endif
-
-static const Palette* gActivePalette = nullptr;
 
 //----------------------------------------------------------------------------------------
 
@@ -25,47 +18,6 @@ SDL_Surface* gFrameSurface = nullptr;   // the equivalent of the 320x480 scrolla
 SDL_Surface* gBackBuffer = nullptr;     // the equivalent of the screen pixels on the lcd
 
 static uint16_t lcd_y_offset = 0;  // offset for vertical scrolling
-
-//----------------------------------------------------------------------------------------
-
-void gfx_set_palette(const Palette* palette)
-{
-    gActivePalette = palette;
-}
-
-const Palette* gfx_get_palette()
-{
-    return gActivePalette;
-}
-
-//----------------------------------------------------------------------------------------
-
-void fb_blitline(int x, int y, int width, const uint8_t* pixels)
-{
-#if LCD_USEFRAMEBUF
-    memcpy(gFramebuf + (y*WIDTH + x), pixels, width);
-#endif
-}
-
-void fb_readback(int x, int y, int width, int height, col8_t *out_pixels)
-{
-#if LCD_USEFRAMEBUF
-
-    int y_framebuf = (y + lcd_y_offset);
-    if (y_framebuf >= BACKBUF_HEIGHT)
-        y_framebuf -= BACKBUF_HEIGHT;
-
-    for (int row_ix = 0; row_ix < height; ++row_ix, out_pixels += width)
-    {
-        memcpy(out_pixels, gFramebuf + (y_framebuf*WIDTH + x), width);
-
-        ++y_framebuf;
-        if (y_framebuf >= BACKBUF_HEIGHT)
-            y_framebuf -= BACKBUF_HEIGHT;
-    }
-
-#endif
-}
 
 //----------------------------------------------------------------------------------------
 
@@ -86,9 +38,10 @@ bool lcd_init(col_t clearCol)
 
     col16_t clearCol16 = clearCol;
 #if LCD_USEPALETTE
-    if (!gActivePalette)
+    const Palette* pal = gfx_get_palette();
+    if (!pal)
         throw "didn't set up palette";
-    clearCol16 = gActivePalette->Cols[clearCol];
+    clearCol16 = pal->Cols[clearCol];
 #endif
 
     SDL_FillRect(gFrameSurface, NULL, clearCol16);
@@ -162,7 +115,8 @@ void lcd_blit(const col_t *pixels, int x, int y, int width, int height)
         y_framebuf -= BACKBUF_HEIGHT;
 
 #if LCD_USEPALETTE
-    if (!gActivePalette)
+    const Palette* pal = gfx_get_palette();
+    if (!pal)
         return;
 
     const uint32_t flags = 0;
@@ -172,7 +126,7 @@ void lcd_blit(const col_t *pixels, int x, int y, int width, int height)
 
     for (int row_ix = 0; row_ix < height; ++row_ix)
     {
-        gActivePalette->Inflate(line, pixels, width);
+        pal->Inflate(line, pixels, width);
 
         SDL_Rect dst { x, y_framebuf, width, 1 };
         SDL_BlitSurface(lineSurf, nullptr, gFrameSurface, &dst);
@@ -237,6 +191,11 @@ void lcd_scroll_clear(col_t col)
     lcd_scroll_reset();
 
     lcd_rect(0, 0, WIDTH, HEIGHT, col);
+}
+
+uint16_t lcd_get_scroll_offset()
+{
+    return lcd_y_offset;
 }
 
 

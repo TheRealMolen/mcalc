@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "drivers/font.h"
+#include "drivers/gfx.h"
 #include "drivers/lcd.h"
 #include "drivers/palette.h"
 #include "drivers/text.h"
