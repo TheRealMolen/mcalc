@@ -31,11 +31,7 @@ void eval_input()
 
     reset_plot();
 
-    const bool success = calc_eval(input_get_line(), resBuf, sizeof(resBuf));
-    if (success)
-    {
-        input_bank_line();
-    }
+    calc_eval(input_get_line(), resBuf, sizeof(resBuf));
 
     text_emit_str(resBuf);
 

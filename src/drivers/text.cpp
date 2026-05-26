@@ -60,9 +60,6 @@ static int16_t gInputStartY = 0;                // the y value of the start of t
 static bool gInputTextEdited = false;           // is there anything in the input buffer that didn't come from the history?
 static bool gInputTextComplete = false;         // set to true when gInputBuf[gInputLen] has been set to 0 to terminate the string
 
-
-static void input_force_end_line();
-
 //----------------------------------------------------------------------------------------
 
 static inline constexpr bool is_printable(char c)
@@ -439,28 +436,12 @@ void input_move_cursor_right()
         gInputEditIx = gInputLen;
 }
 
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
 
-static void bank_current_line()
+static void replace_input_line(const char* new_line)
 {
-    if (!gInputTextEdited)
-        return;
-
-    input_force_end_line();
-    const char* line = input_get_line();
-    if (!line || !line[0])
-        return;
-
-    hist_jump_to_newest();
-    hist_add_line(line);
-
-    gInputTextEdited = false;
-}
-
-
-static void switch_to_history_line()
-{
-    const char* hist_line = hist_get_curr_line();
-    if (!hist_line || !hist_line[0])
+    if (!new_line)
         return;
 
     gInputEditIx = 0;
@@ -468,7 +449,7 @@ static void switch_to_history_line()
 
     text_clear_line(">");
 
-    for (const char* c = hist_line; *c; ++c)
+    for (const char* c = new_line; *c; ++c)
     {
         input_process_char(*c);
     }
@@ -477,24 +458,27 @@ static void switch_to_history_line()
     gInputTextComplete = false;
 }
 
-void on_up_pressed()
+static void on_up_pressed()
 {
-    bank_current_line();
+    //bank_current_line();
 
-    switch_to_history_line();
+    replace_input_line(hist_get_curr_line());
 
     if (!hist_prev())
-        return; // this is annoying - we've just banked something pointlessly here
+        return;
 }
 
-void on_down_pressed()
+static void on_down_pressed()
 {
-    bank_current_line();
+    //bank_current_line();
 
     if (!hist_next())
-        return; // this is annoying - we've just banked something pointlessly here
+    {
+        replace_input_line("");
+        return;
+    }
 
-    switch_to_history_line();
+    replace_input_line(hist_get_curr_line());
 }
 
 // adds a (printable) character to the current cursor pos in our input line
@@ -537,7 +521,10 @@ void input_process_char(int c)
         text_next_line();
 
         // null-terminate and remember that we have a complete line
-        input_force_end_line();
+        gInputBuf[gInputLen] = 0;
+        gInputTextComplete = true; 
+
+        hist_add_line(gInputBuf);
         return;
 
     case KEY_BACKSPACE:
@@ -601,29 +588,12 @@ void input_reset_line()
     text_clear_line(">");
 }
 
-static void input_force_end_line()
-{
-    if (!input_has_complete_line())
-    {
-        gInputBuf[gInputLen] = 0;
-        gInputTextComplete = true; 
-    }
-}
-
-void input_bank_line()
-{
-    input_force_end_line();
-
-    if (gInputTextComplete && gInputBuf[0])
-        hist_add_line(gInputBuf);
-}
-
 //-------------------------------------------------------------------------------------------------
 
 void text_init()
 {
     hist_init();
-    hist_enable_logging(true);
+    //hist_enable_logging(true);
 
 #if MLN_TARGET_PICO
     // Blink the cursor every second (500 ms on, 500 ms off)
