@@ -22,10 +22,14 @@ void gfx_set_palette(const Palette* palette)
     if (palette == gActivePalette)
         return;
 
+    [[maybe_unused]] const bool wasInvalid = gActivePalette == nullptr;
+
     gActivePalette = palette;
 
 #if GFX_USEFRAMEBUF
-    // if we're using a framebuf, we can redraw the whole screen in the new palette
+    // if we're using a framebuf and we aren't initialising, we can redraw the whole screen in the new palette
+    if (wasInvalid)
+        return;
 
     // ...but lcd_blit will try and write to the fb, so we can suppress that
     gAllowFramebufUpdate = false;
@@ -57,6 +61,10 @@ const Palette* gfx_get_palette()
 void fb_blitline(int x, int y, int width, const uint8_t* pixels)
 {
 #if GFX_USEFRAMEBUF
+    // we use this while blitting from the fb to the lcd - no point in copying back again
+    if (!gAllowFramebufUpdate)
+        return;
+
     memcpy(gFramebuf + (y*WIDTH + x), pixels, width);
 #endif
 }
