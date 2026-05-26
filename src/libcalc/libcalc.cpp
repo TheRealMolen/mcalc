@@ -54,12 +54,12 @@ namespace
         uint16_t g = (c >> 5) & 0x3f;
         uint16_t b = c & 0x1f;
 
-        r = (r * 17) / 16;
+        r = (r * 20) / 16;
         g = (g * 35) / 32;
-        b = (b * 18) / 16;
+        b = (b * 20) / 16;
 
         if (r > 0x1f) r = 0x1f;
-        if (g > 0x1f) g = 0x1f;
+        if (g > 0x3f) g = 0x3f;
         if (b > 0x1f) b = 0x1f;
 
         return (r << 11) | (g << 5) | (b);

@@ -266,6 +266,22 @@ int main(int argc, const char** argv)
     text_emit_str("\n");
     input_reset_line();
 
+#if 0
+    {
+        col8_t line[WIDTH];
+        col8_t* p = line;
+        for (int col = 0; col < 16; ++col)
+        {
+            for (int i=0; i<20; ++i, ++p)
+                *p = col + 16;
+        }
+        for (int y=250; y<HEIGHT; ++y)
+        {
+            lcd_blit(line, 0, y, WIDTH, 1);
+        }
+    }
+#endif
+
     lcd_refresh(gWindow);
 
     SDL_TimerID cursorTimer = SDL_AddTimer(500, cursor_timer_func, nullptr);
