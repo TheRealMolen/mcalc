@@ -1,15 +1,21 @@
+#include "platform.h"
+
 #include <SDL.h>
 #include <algorithm>
 #include <cstdio>
 
 #include "drivers/font.h"
 #include "drivers/gfx.h"
+#include "drivers/keyboard.h"
+#include "drivers/history.h"
 #include "drivers/lcd.h"
 #include "drivers/palette.h"
 #include "drivers/text.h"
 
 #include "libcalc/libcalc.h"
 
+#define DOCTEST_CONFIG_IMPLEMENT
+#include "extern/doctest.h"
 
 //-------------------------------------------------------------------------------------------------
 
@@ -25,7 +31,12 @@ void eval_input()
 
     reset_plot();
 
-    calc_eval(input_get_line(), resBuf, sizeof(resBuf));
+    const bool success = calc_eval(input_get_line(), resBuf, sizeof(resBuf));
+    if (success)
+    {
+        input_bank_line();
+    }
+
     text_emit_str(resBuf);
 
     if (const Plot* plot = get_plot())
@@ -33,6 +44,7 @@ void eval_input()
         text_put_image(plot->Pixels, MC_PLOT_WIDTH, MC_PLOT_HEIGHT);
     }
 
+    text_emit_str("\n");
     input_reset_line();
 }
 
@@ -130,6 +142,8 @@ static bool cmd_screenshot(const char*)
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
+//-------------------------------------------------------------------------------------------------
+
 bool handle_input(bool* outAnyInput)
 {
     SDL_Event evt;
@@ -142,7 +156,6 @@ bool handle_input(bool* outAnyInput)
             break;
 
         case SDL_TEXTINPUT:
-            //printf("textinput: char=%c\n", evt.text.text[0]);
             input_process_char(evt.text.text[0]);
 
             if (outAnyInput)
@@ -161,11 +174,11 @@ bool handle_input(bool* outAnyInput)
                 {
                 case SDLK_UP:
                 case SDLK_DOWN:
-                case SDLK_LEFT:
-                case SDLK_RIGHT:
                 case SDLK_BACKSPACE:
                 case SDLK_DELETE:
                 case SDLK_RETURN:
+                case SDLK_LEFT:
+                case SDLK_RIGHT:
                     input_process_char(keycode);
                     if (input_has_complete_line())
                         eval_input();
@@ -203,8 +216,30 @@ bool handle_input(bool* outAnyInput)
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 
-int main()
+std::pair<bool,int> run_unit_tests(int argc, const char** argv)
 {
+    doctest::Context context;
+    context.applyCommandLine(argc, argv);
+
+    const int result = context.run();
+
+    return {context.shouldExit(), result};
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+
+int main(int argc, const char** argv)
+{
+    {
+        const auto& [should_exit, exitcode] = run_unit_tests(argc, argv);
+        if (should_exit)
+        {
+            fprintf(stderr, "unit tests failed; aborting");
+            return exitcode;
+        }
+    }
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
     {
         fprintf(stderr, "Failed to init SDL: %s\n", SDL_GetError());
@@ -224,12 +259,15 @@ int main()
     if (!lcd_init(text_get_background()))
         return 1;
 
+    text_init();
+
     calc_init(text_emit_str);
     register_calc_cmd(cmd_big, "big", "", "switches to big text");
     register_calc_cmd(cmd_small, "small", "", "switches to small text");
     register_calc_cmd(cmd_bye, "bye", "", "closes the calc");
 
     text_emit_str(MCALC_WELCOME);
+    text_emit_str("\n");
     input_reset_line();
 
     lcd_refresh(gWindow);

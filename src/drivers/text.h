@@ -50,6 +50,7 @@ void input_process_char(int c);
 bool input_has_complete_line();
 const char* input_get_line();
 void input_reset_line();
+void input_bank_line();
 
 //-------------------------------------------------------------------------------------------------
 

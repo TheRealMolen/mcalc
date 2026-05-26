@@ -314,7 +314,10 @@ bool cmd_graph_y(ParseCtx& ctx)
     }
 
     if (!draw_plot(func_name, &x, &y, ctx))
+    {
+        reset_plot();
         return false;
+    }
 
     return true;
 }
@@ -427,6 +430,8 @@ bool calc_eval(const char* expr, char* resBuffer, int resBufferLen)
     if (!resBuffer)
         return false;
     *resBuffer = 0;
+    if (!expr || !expr[0])
+        return false;
 
     ParseCtx parseCtx { .InBuffer=expr, .ResBuffer=resBuffer, .ResBufferLen=resBufferLen };
     advance_token(parseCtx);
