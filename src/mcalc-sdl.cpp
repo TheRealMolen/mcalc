@@ -14,6 +14,7 @@
 
 #include "libcalc/libcalc.h"
 #include "libcalc/palette.h"
+#include "libcalc/plot.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "extern/doctest.h"

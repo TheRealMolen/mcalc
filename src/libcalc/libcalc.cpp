@@ -113,6 +113,7 @@ bool parse_axis(ParseCtx& ctx, PlotAxis& axis)
     return true;
 }
 
+//-------------------------------------------------------------------------------------------------
 
 // g f -pi<x<pi, -1<y<1
 // cmd_graph ::= "g" symbol [axis ["," axis]]
@@ -160,6 +161,137 @@ bool cmd_graph_y(ParseCtx& ctx)
     {
         reset_plot();
         return false;
+    }
+
+    return true;
+}
+
+//-------------------------------------------------------------------------------------------------
+
+static constexpr int kMaxElementsInVarList = 5; // that's as many colours as we have in the palette
+
+// primary_list ::= primary | primary "," primary_list
+// returns the number of vals parsed. outVals needs space for at least kMaxElementsInVarList
+int parse_primary_list(ParseCtx& ctx, double* outVals, int maxVals)
+{
+    int numVals = 0;
+    outVals[numVals] = parse_primary(ctx);
+    if (ctx.Error)
+        return 0;
+
+    ++numVals;
+
+    while (accept(ctx, Token::Comma))
+    {
+        if (numVals >= maxVals)
+        {
+            on_parse_error(ctx, "too many values in list");
+            return 0;
+        }
+
+        outVals[numVals] = parse_primary(ctx);
+        if (ctx.Error)
+            return 0;
+
+        ++numVals;
+    }
+
+    return numVals;
+}
+
+
+
+// mg f k=1,2,3 -pi<x<pi, -1<y<1
+// cmd_multigraph ::= "mg" symbol symbol=val_list [axis ["," axis]]
+bool cmd_multigraph_y(ParseCtx& ctx)
+{
+    char func_name[kMaxSymbolLength+1];
+    if (!expect_symbol(ctx, func_name))
+    {
+        on_parse_error(ctx, "need user func name for y=f(x)");
+        return false;
+    }
+    if (!is_user_func(func_name))
+    {
+        on_parse_error(ctx, "unknown user function");
+        return false;
+    }
+
+    char sym_name[kMaxSymbolLength+1];
+    if (!expect_symbol(ctx, sym_name))
+    {
+        on_parse_error(ctx, "missing name of varying symbol");
+        return false;
+    }
+
+    UserSymbolIt itSym = lookup_user_sym(sym_name);
+    if (!itSym)
+    {
+        on_parse_error(ctx, "unknown symbol");
+        return false;
+    }
+
+    if (!expect(ctx, Token::Equals))
+        return false;
+    double symVals[kMaxElementsInVarList];
+    int numSymVals = parse_primary_list(ctx, symVals, kMaxElementsInVarList);
+    if (ctx.Error)
+        return false;
+    if (numSymVals <= 1)
+    {
+        on_parse_error(ctx, "invalid/missing val list");
+        return false;
+    }
+
+    PlotAxis x { .Name = "x" };
+    PlotAxis y { .Name = "y" };
+
+    while (!peek(ctx, Token::Eof))
+    {
+        const int axisStartIx = ctx.CurrIx;
+
+        PlotAxis axis;
+        if (!parse_axis(ctx, axis))
+            return false;
+
+        if (strcmp(axis.Name, x.Name) == 0)
+            x = axis;
+        else if (strcmp(axis.Name, y.Name) == 0)
+            y = axis;
+        else
+        {
+            ctx.CurrIx = axisStartIx;
+            on_parse_error(ctx, "unknown axis");
+            return false;
+        }
+
+        if (!accept(ctx, Token::Comma))
+            break;
+    }
+
+    set_user_sym(itSym, symVals[0]);
+    if (!draw_plot(func_name, &x, &y, ctx))
+    {
+        reset_plot();
+        return false;
+    }
+
+    char legend[33];
+    snprintf(legend, sizeof(legend), "y=%s(x)", func_name);
+    add_legend_line(legend, PAL_FG);
+
+    snprintf(legend, sizeof(legend), "%s=%f", sym_name, symVals[0]);
+    add_legend_line(legend, PAL_FG);
+
+    for (int valIx = 1; valIx < numSymVals; ++valIx)
+    {
+        double val = symVals[valIx];
+        set_user_sym(itSym, val);
+
+        append_to_plot(func_name, ctx);
+
+        snprintf(legend, sizeof(legend), "%s=%f", sym_name, val);
+        add_legend_line(legend, PAL_FG);
     }
 
     return true;
@@ -227,6 +359,7 @@ void calc_init(calc_puts_func puts_func)
     init_commands();
 
     register_calc_cmd(cmd_graph_y, "g", "g fn [lo<x<hi] [, lo<y<hi]", "graph of y=fn(x)");
+    register_calc_cmd(cmd_multigraph_y, "mg", "mg fn V=a,b,... [lo<x<hi] [, lo<y<hi]", "multigraph of y=fn(x)");
     register_calc_cmd(cmd_theme, "theme", "theme dark|lite", "changes colour theme");
 
     register_chaos_commands();
