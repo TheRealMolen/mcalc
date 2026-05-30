@@ -13,6 +13,7 @@
 #include "drivers/text.h"
 
 #include "libcalc/libcalc.h"
+#include "libcalc/palette.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "extern/doctest.h"
