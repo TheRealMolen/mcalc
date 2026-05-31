@@ -27,46 +27,6 @@ bool gWantsQuit = false;
 
 //-------------------------------------------------------------------------------------------------
 
-void eval_input()
-{
-    char resBuf[1024];
-
-    reset_plot();
-
-    calc_eval(input_get_line(), resBuf, sizeof(resBuf));
-
-    text_emit_str(resBuf);
-
-    if (const Plot* plot = get_plot())
-    {
-        text_put_image(plot->Pixels, MC_PLOT_WIDTH, MC_PLOT_HEIGHT);
-
-        const Font* oldFont = text_get_font();
-        const Font& font = font_5x10;
-        text_set_font(&font);
-        const col_t oldCol = text_get_foreground();
-
-        int y = 20 - MC_PLOT_HEIGHT;
-        for (int i=0; i<plot->NumLegendLines; ++i)
-        {
-            const PlotLegend& leg = plot->LegendLines[i];
-            text_set_foreground(leg.Col);
-
-            int x = 10;
-            for (const char* c = leg.Text; *c; ++c)
-                x += text_putc(x, y, *c);
-
-             y += font.Height;
-        }
-
-        text_set_font(oldFont);
-        text_set_foreground(oldCol);
-    }
-
-    text_emit_str("\n");
-    input_reset_line();
-}
-
 bool gToggleCursor = false;
 Uint32 cursor_timer_func(Uint32 interval, void*)
 {
@@ -200,7 +160,7 @@ bool handle_input(bool* outAnyInput)
                 case SDLK_RIGHT:
                     input_process_char(keycode);
                     if (input_has_complete_line())
-                        eval_input();
+                        calc_process_input();
                     break;
 
                 case SDLK_F12:
@@ -212,7 +172,7 @@ bool handle_input(bool* outAnyInput)
                 case SDL_SCANCODE_KP_ENTER:
                     input_process_char(SDLK_RETURN);
                     if (input_has_complete_line())
-                        eval_input();
+                        calc_process_input();
                     break;
 
                 case SDL_SCANCODE_ESCAPE:

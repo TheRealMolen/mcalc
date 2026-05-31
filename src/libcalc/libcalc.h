@@ -11,7 +11,7 @@ extern "C" {
 
 //-------------------------------------------------------------------------------------------------
 
-#define MCALC_WELCOME   "molencalc v20\t   don't panic\n"
+#define MCALC_WELCOME   "molencalc v21\t   don't panic\n"
 
 //-------------------------------------------------------------------------------------------------
 
@@ -31,6 +31,8 @@ void register_calc_cmd(calc_cmd_func func, const char* name, const char* usage, 
 
 void calc_init(calc_puts_func puts_func);
 bool calc_eval(const char* expr, char* resBuffer, int resBufferLen);
+
+void calc_process_input();
 
 //-------------------------------------------------------------------------------------------------
 
