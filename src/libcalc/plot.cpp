@@ -35,6 +35,11 @@ void reset_plot()
     gActivePlot = nullptr;
 }
 
+col_t plot_get_line_col(int i)
+{
+    return kLineColours[i % kPlotMaxLines];
+}
+
 //-------------------------------------------------------------------------------------------------
 
 static inline void safePlot(int x, int y, col_t col)

@@ -119,7 +119,7 @@ static constexpr uint16_t gLiteModeCols[] =
     RGB16(209, 92,127),     // graph line 2
     RGB16( 60,157, 87),     // graph line 3
     RGB16(210,133, 17),     // graph line 4
-    RGB16(235,255,  0),     // graph line 5
+    RGB16(  0,130,161),     // graph line 5
 
     0, 0, 0, 0,             // reserved
     0, 0, 0, 0,

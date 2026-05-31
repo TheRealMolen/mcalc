@@ -135,5 +135,7 @@ void add_legend_line(const char* text, col_t colour);
 
 void append_to_plot(const char* func_name, ParseCtx& ctx);
 
+col_t plot_get_line_col(int i);
+
 //-------------------------------------------------------------------------------------------------
 

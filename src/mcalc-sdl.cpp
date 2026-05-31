@@ -40,6 +40,27 @@ void eval_input()
     if (const Plot* plot = get_plot())
     {
         text_put_image(plot->Pixels, MC_PLOT_WIDTH, MC_PLOT_HEIGHT);
+
+        const Font* oldFont = text_get_font();
+        const Font& font = font_5x10;
+        text_set_font(&font);
+        const col_t oldCol = text_get_foreground();
+
+        int y = 20 - MC_PLOT_HEIGHT;
+        for (int i=0; i<plot->NumLegendLines; ++i)
+        {
+            const PlotLegend& leg = plot->LegendLines[i];
+            text_set_foreground(leg.Col);
+
+            int x = 10;
+            for (const char* c = leg.Text; *c; ++c)
+                x += text_putc(x, y, *c);
+
+             y += font.Height;
+        }
+
+        text_set_font(oldFont);
+        text_set_foreground(oldCol);
     }
 
     text_emit_str("\n");

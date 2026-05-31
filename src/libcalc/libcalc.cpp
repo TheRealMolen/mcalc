@@ -230,7 +230,6 @@ bool cmd_multigraph_y(ParseCtx& ctx)
         on_parse_error(ctx, "unknown symbol");
         return false;
     }
-
     if (!expect(ctx, Token::Equals))
         return false;
     double symVals[kMaxElementsInVarList];
@@ -276,12 +275,19 @@ bool cmd_multigraph_y(ParseCtx& ctx)
         return false;
     }
 
-    char legend[33];
+    char legend[49];
     snprintf(legend, sizeof(legend), "y=%s(x)", func_name);
     add_legend_line(legend, PAL_FG);
 
-    snprintf(legend, sizeof(legend), "%s=%f", sym_name, symVals[0]);
-    add_legend_line(legend, PAL_FG);
+    auto add_legend = [&legend, sym_name](double val, int valIx)
+    {
+        char valStr[20];
+        dtostr_human(val, valStr, sizeof(valStr));
+        snprintf(legend, sizeof(legend), "%s=%s", sym_name, valStr);
+        add_legend_line(legend, plot_get_line_col(valIx));
+    };
+
+    add_legend(symVals[0], 0);
 
     for (int valIx = 1; valIx < numSymVals; ++valIx)
     {
@@ -290,8 +296,7 @@ bool cmd_multigraph_y(ParseCtx& ctx)
 
         append_to_plot(func_name, ctx);
 
-        snprintf(legend, sizeof(legend), "%s=%f", sym_name, val);
-        add_legend_line(legend, PAL_FG);
+        add_legend(symVals[valIx], valIx);
     }
 
     return true;
@@ -391,7 +396,7 @@ static bool is_expr_definition(const char* expr)
     const int prefixLen = spacePtr - expr;
     char cmdbuf[kMaxSymbolLength+1];
     memcpy(cmdbuf, expr, prefixLen);
-    cmdbuf[prefixLen+1] = 0;
+    cmdbuf[prefixLen] = 0;
     const CommandDef* cmd = lookup_command(cmdbuf);
     if (cmd)
         return false;
